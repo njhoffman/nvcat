@@ -27,11 +27,11 @@ A command-line utility that displays files with Neovim's syntax highlighting in 
   <tr>
     <td width="600px">
       <img src="https://github.com/user-attachments/assets/79d53df0-6fcc-4ada-a36d-42179e447bd3" />
-    </td>      
+    </td>
   </tr>
   <tr>
     <th>
-      Nvcat as <a href="https://github.com/junegunn/fzf">fzf</a>'s preview, with my custom 
+      Nvcat as <a href="https://github.com/junegunn/fzf">fzf</a>'s preview, with my custom
       <a href="https://github.com/brianhuster/dotfiles/blob/5e7aed6/nvim/colors/an.lua">colorscheme</a>.
     </th>
   </tr>
@@ -40,25 +40,26 @@ A command-line utility that displays files with Neovim's syntax highlighting in 
 ## Installation
 
 **Prequisites**:
+
 - Neovim 0.10+ (must be accessible via `nvim`)
 - A terminal that supports true color
 
 ### Prebuilt binaries
 
-See the [releases page](https://github.com/brianhuster/nvcat/releases) for prebuilt binaries for Linux, macOS, and Windows.
+See the [releases page](https://github.com/njhoffman/nvcat/releases) for prebuilt binaries for Linux, macOS, and Windows.
 
 ### From source
 
 Requires Go 1.22+
 
 ```bash
-go install github.com/brianhuster/nvcat@latest
+go install github.com/njhoffman/nvcat@latest
 ```
 
 Or clone and build manually:
 
 ```bash
-git clone https://github.com/brianhuster/nvcat.git
+git clone https://github.com/njhoffman/nvcat.git
 cd nvcat
 sudo make install
 ```
@@ -71,12 +72,12 @@ nvcat [options] <file>
 
 ### Options
 
-* `-n`, `--numbers`: Show line numbers
-* `--clean`: Don't load Neovim's config
-* `--time`: Show timing stats and save to `$XDG_CONFIG_HOME/nvcat/timings.json`
-* `--timings`: Show average lines/sec per filetype from saved timing data
-* `-v`, `--version`: Show version information
-* `-h`, `--help`: Show help information
+- `-n`, `--numbers`: Show line numbers
+- `--clean`: Don't load Neovim's config
+- `--time`: Show timing stats and save to `$XDG_CONFIG_HOME/nvcat/timings.json`
+- `--timings`: Show average lines/sec per filetype from saved timing data
+- `-v`, `--version`: Show version information
+- `-h`, `--help`: Show help information
 
 ## Configuration
 
@@ -84,14 +85,15 @@ You can configure Nvcat using Vimscript or Lua just the same as you would with N
 
 There are 2 ways to configure Nvcat:
 
-#### 1. Use Nvcat's config directory: `$XDG_CONFIG_HOME/nvcat/init.lua` or `$XDG_CONFIG_HOME/nvcat/init.vim`.
+#### 1. Use Nvcat's config directory: `$XDG_CONFIG_HOME/nvcat/init.lua` or `$XDG_CONFIG_HOME/nvcat/init.vim`
 
 With this method, your Nvcat configuration will be seperated from your Neovim configuration, and it can be loaded even when the flag `--clean` is given
 
 Example:
+
 ```lua
 --- ~/.config/nvcat/init.lua
-vim.opt.rtp:append(path/to/your/colorscheme/runtimepath)
+vim.opt.rtp:append(path / to / your / colorscheme / runtimepath)
 -- Add runtimepath directory containing 'parser/<your-treesitter-parsers>'
 vim.opt.rtp:append("replace/with/your/actual/path")
 
@@ -99,23 +101,24 @@ vim.cmd.colorscheme("your-colorscheme")
 vim.o.tabstop = 4
 
 vim.api.nvim_create_autocmd("FileType", {
-    callback = function()
-        pcall(vim.treesitter.start)
-    end
+	callback = function()
+		pcall(vim.treesitter.start)
+	end,
 })
 ```
 
-#### 2. Use Neovim's config dictionary (`:echo stdpath('config')`).
+#### 2. Use Neovim's config dictionary (`:echo stdpath('config')`)
 
 Nvcat sets Vimscript variable `g:nvcat` on startup, so you can use it to control which parts of your Neovim configuration should not be used by Nvcat.
 
 Example:
+
 ```lua
 --- ~/.config/nvim/init.lua
 if vim.g.nvcat then
-    -- Nvcat configuration
+	-- Nvcat configuration
 else
-    -- LSP, plugins, etc.
+	-- LSP, plugins, etc.
 end
 ```
 
@@ -129,21 +132,21 @@ end
 ### Testing
 
 ```bash
-make test          # Run all tests (requires nvim)
-make test-short    # Run unit tests only (no nvim required)
-make test-integration  # Run integration tests only
+make test             # Run all tests (requires nvim)
+make test-short       # Run unit tests only (no nvim required)
+make test-integration # Run integration tests only
 ```
 
 ### Linting
 
 ```bash
-make lint          # Run golangci-lint (falls back to go vet)
+make lint # Run golangci-lint (falls back to go vet)
 ```
 
 ### Benchmarking
 
 ```bash
-make bench         # Run Go benchmarks + hyperfine CLI benchmarks
+make bench # Run Go benchmarks + hyperfine CLI benchmarks
 ```
 
 Requires [hyperfine](https://github.com/sharkdp/hyperfine) for end-to-end benchmarks.

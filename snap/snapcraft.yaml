@@ -21,7 +21,7 @@ parts:
   nvcat:
     plugin: go
     build-snaps: [go/latest/stable]
-    source: https://github.com/brianhuster/nvcat
+    source: https://github.com/njhoffman/nvcat
     source-type: git
     override-pull: |
       snapcraftctl pull

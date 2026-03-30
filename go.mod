@@ -1,4 +1,4 @@
-module github.com/brianhuster/nvcat
+module github.com/njhoffman/nvcat
 
 go 1.24.1
 

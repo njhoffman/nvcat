@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:neovim.io)",
+      "Bash(golangci-lint --version)",
+      "Bash(./nvcat --help)",
+      "Bash(./nvcat --time --clean testdata/sample.go > /dev/null)",
+      "Bash(./nvcat --time --clean testdata/sample.lua)",
+      "Bash(./nvcat --timings)"
+    ]
+  }
+}
