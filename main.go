@@ -101,6 +101,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error loading Lua script: %v\n", err)
 	}
 
+	var normalHasBg bool
+	err = vim.ExecLua("return NvcatNormalHasBg()", &normalHasBg)
+	if err == nil && normalHasBg {
+		fmt.Fprintf(os.Stderr, "Warning: Normal highlight group has a background color set, which will be ignored to preserve your terminal's background.\n")
+	}
+
 	var expandtab bool
 	var tabstop int
 
@@ -154,11 +160,24 @@ func rgbToAnsi(color uint64) string {
 	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
 }
 
+func rgbToAnsiBg(color uint64) string {
+	r := uint8((color >> 16) & 0xFF)
+	g := uint8((color >> 8) & 0xFF)
+	b := uint8(color & 0xFF)
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r, g, b)
+}
+
 func getAnsiFromHl(hl map[string]any) (string, error) {
 	var ansiCode strings.Builder
 
 	if fg, ok := hl["fg"].(uint64); ok {
 		if ansi := rgbToAnsi(fg); ansi != "" {
+			ansiCode.WriteString(ansi)
+		}
+	}
+
+	if bg, ok := hl["bg"].(uint64); ok {
+		if ansi := rgbToAnsiBg(bg); ansi != "" {
 			ansiCode.WriteString(ansi)
 		}
 	}

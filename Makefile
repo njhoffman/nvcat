@@ -29,7 +29,28 @@ else
 	GO_BIN = go/bin/go # relative to BUILD_DIR
 endif
 
-.PHONY: install clean
+.PHONY: install clean test test-short test-integration lint bench
+
+test:
+	go test -v -count=1 .
+
+test-short:
+	go test -v -short -count=1 .
+
+test-integration:
+	go test -v -run='^TestIntegration' -count=1 .
+
+lint:
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run; \
+	else \
+		echo "golangci-lint not found. Install from https://golangci-lint.run/welcome/install/"; \
+		echo "Falling back to go vet..."; \
+		go vet ./...; \
+	fi
+
+bench:
+	./bench.sh
 
 install:
 	@echo "Creating build directory..."

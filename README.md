@@ -10,6 +10,7 @@ A command-line utility that displays files with Neovim's syntax highlighting in 
 
 - Syntax highlighting using Neovim's highlighting engine
 - Support for treesitter-based highlighting
+- Foreground and background colors, bold, italic, underline
 - Optional line numbers
 - Can use your existing Neovim configuration or run with a clean instance
 
@@ -118,7 +119,31 @@ end
 ## Limitationns
 
 - `nvcat` only supports legacy and Treesitter-based syntax highlighting engines. It does not support LSP-based highlighting.
-- `nvcat` doesn't change background colors, so you should use a color scheme that has a background color similar to your terminal's
+- `nvcat` supports background colors from syntax highlighting, but ignores the `Normal` highlight group's background to preserve your terminal's own background
+
+## Development
+
+### Testing
+
+```bash
+make test          # Run all tests (requires nvim)
+make test-short    # Run unit tests only (no nvim required)
+make test-integration  # Run integration tests only
+```
+
+### Linting
+
+```bash
+make lint          # Run golangci-lint (falls back to go vet)
+```
+
+### Benchmarking
+
+```bash
+make bench         # Run Go benchmarks + hyperfine CLI benchmarks
+```
+
+Requires [hyperfine](https://github.com/sharkdp/hyperfine) for end-to-end benchmarks.
 
 ## Buy me a coffee
 
