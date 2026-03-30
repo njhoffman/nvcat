@@ -12,6 +12,7 @@ A command-line utility that displays files with Neovim's syntax highlighting in 
 - Support for treesitter-based highlighting
 - Foreground and background colors, bold, italic, underline
 - Optional line numbers
+- Performance tracking with `--time` and `--timings`
 - Can use your existing Neovim configuration or run with a clean instance
 
 <table width="100%">
@@ -85,7 +86,7 @@ There are 2 ways to configure Nvcat:
 
 #### 1. Use Nvcat's config directory: `$XDG_CONFIG_HOME/nvcat/init.lua` or `$XDG_CONFIG_HOME/nvcat/init.vim`.
 
-With this method, your Nvcat configuration will be seperated from your Neovim configuration, and it can be loaded even when the flag `-clean` is given
+With this method, your Nvcat configuration will be seperated from your Neovim configuration, and it can be loaded even when the flag `--clean` is given
 
 Example:
 ```lua
