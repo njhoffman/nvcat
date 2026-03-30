@@ -21,22 +21,35 @@ const (
 	AnsiUnderline = "\033[4m"
 )
 
-type nvcatCliFlags struct {
-	number  *bool
-	clean   *bool
-	help    *bool
-	version *bool
-}
-
 type formatOpts struct {
 	tab string
 }
 
-var cliFlags = nvcatCliFlags{
-	number: flag.Bool("n", false, "Show line numbers"),
-	clean:       flag.Bool("clean", false, "Use a clean Neovim instance"),
-	help:        flag.Bool("h", false, "Show help"),
-	version:     flag.Bool("v", false, "Show version"),
+var (
+	flagNumber  bool
+	flagClean   bool
+	flagHelp    bool
+	flagVersion bool
+)
+
+func init() {
+	flag.BoolVar(&flagNumber, "n", false, "")
+	flag.BoolVar(&flagNumber, "numbers", false, "")
+	flag.BoolVar(&flagClean, "clean", false, "")
+	flag.BoolVar(&flagHelp, "h", false, "")
+	flag.BoolVar(&flagHelp, "help", false, "")
+	flag.BoolVar(&flagVersion, "v", false, "")
+	flag.BoolVar(&flagVersion, "version", false, "")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: nvcat [OPTIONS] <file>\n")
+		fmt.Fprintf(os.Stderr, "\nDisplay files with Neovim's syntax highlighting in the terminal.\n")
+		fmt.Fprintf(os.Stderr, "\nOptions:\n")
+		fmt.Fprintf(os.Stderr, "  -n, --numbers    Show line numbers\n")
+		fmt.Fprintf(os.Stderr, "      --clean      Don't load Neovim's config\n")
+		fmt.Fprintf(os.Stderr, "  -v, --version    Show version information\n")
+		fmt.Fprintf(os.Stderr, "  -h, --help       Show this help message\n")
+	}
 }
 
 //go:embed runtime/plugin/nvcat.lua
@@ -47,14 +60,13 @@ var Version = "dev"
 func main() {
 	flag.Parse()
 
-	if *cliFlags.version {
+	if flagVersion {
 		fmt.Println("nvcat " + Version)
 		os.Exit(0)
 	}
 
-	if len(flag.Args()) < 1 || *cliFlags.help {
-		fmt.Println("Usage: nvcat [options] <file>")
-		flag.PrintDefaults()
+	if flagHelp || len(flag.Args()) < 1 {
+		flag.Usage()
 		os.Exit(1)
 	}
 
@@ -77,7 +89,7 @@ func main() {
 	lines := strings.Split(string(fileContent), "\n")
 
 	var args = []string{"--cmd", fmt.Sprintf("let g:nvcat = '%s'", Version), "--embed", "--headless"}
-	if *cliFlags.clean {
+	if flagClean {
 		args = append(args, "--clean")
 	}
 	vim, err := nvim.NewChildProcess(nvim.ChildProcessArgs(args...))
@@ -135,7 +147,7 @@ func main() {
 func printLines(vim *nvim.Nvim, lines []string, opts formatOpts) {
 	numDigits := len(fmt.Sprintf("%d", len(lines)))
 	for i, line := range lines {
-		if *cliFlags.number {
+		if flagNumber {
 			fmt.Fprint(os.Stderr, AnsiDim)
 			fmt.Fprint(os.Stdout, fmt.Sprintf("%" + strconv.Itoa(numDigits) + "d ", i+1))
 			fmt.Fprint(os.Stderr, AnsiReset)

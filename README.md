@@ -70,10 +70,10 @@ nvcat [options] <file>
 
 ### Options
 
-* `-n`: Show line numbers
-* `-clean`: Don't load Neovim's config
-* `-v`: Show version information
-* `-h`: Show help information
+* `-n`, `--numbers`: Show line numbers
+* `--clean`: Don't load Neovim's config
+* `-v`, `--version`: Show version information
+* `-h`, `--help`: Show help information
 
 ## Configuration
 

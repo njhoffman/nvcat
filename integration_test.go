@@ -166,7 +166,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		t.Fatalf("failed to build nvcat: %v", err)
 	}
 
-	cmd := exec.Command(binPath, "-clean", "testdata/sample.go")
+	cmd := exec.Command(binPath, "--clean", "testdata/sample.go")
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -205,7 +205,7 @@ func BenchmarkIntegration_EndToEnd(b *testing.B) {
 	}
 
 	for b.Loop() {
-		cmd := exec.Command(binPath, "-clean", "testdata/sample.go")
+		cmd := exec.Command(binPath, "--clean", "testdata/sample.go")
 		cmd.Stdout = os.NewFile(0, os.DevNull)
 		cmd.Stderr = os.NewFile(0, os.DevNull)
 		if err := cmd.Run(); err != nil {
