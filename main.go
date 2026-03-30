@@ -10,6 +10,7 @@ import (
 	"strings"
 	"strconv"
 	"bytes"
+	"time"
 	"github.com/clipperhouse/uax29/graphemes"
 )
 
@@ -30,6 +31,8 @@ var (
 	flagClean   bool
 	flagHelp    bool
 	flagVersion bool
+	flagTime    bool
+	flagTimings bool
 )
 
 func init() {
@@ -40,6 +43,8 @@ func init() {
 	flag.BoolVar(&flagHelp, "help", false, "")
 	flag.BoolVar(&flagVersion, "v", false, "")
 	flag.BoolVar(&flagVersion, "version", false, "")
+	flag.BoolVar(&flagTime, "time", false, "")
+	flag.BoolVar(&flagTimings, "timings", false, "")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: nvcat [OPTIONS] <file>\n")
@@ -47,6 +52,8 @@ func init() {
 		fmt.Fprintf(os.Stderr, "\nOptions:\n")
 		fmt.Fprintf(os.Stderr, "  -n, --numbers    Show line numbers\n")
 		fmt.Fprintf(os.Stderr, "      --clean      Don't load Neovim's config\n")
+		fmt.Fprintf(os.Stderr, "      --time       Show timing stats and save to timings.json\n")
+		fmt.Fprintf(os.Stderr, "      --timings    Show average lines/sec per filetype from saved data\n")
 		fmt.Fprintf(os.Stderr, "  -v, --version    Show version information\n")
 		fmt.Fprintf(os.Stderr, "  -h, --help       Show this help message\n")
 	}
@@ -62,6 +69,11 @@ func main() {
 
 	if flagVersion {
 		fmt.Println("nvcat " + Version)
+		os.Exit(0)
+	}
+
+	if flagTimings {
+		printTimings()
 		os.Exit(0)
 	}
 
@@ -141,7 +153,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	start := time.Now()
 	printLines(vim, lines, formatOpts { tab: tab })
+
+	if flagTime {
+		duration := time.Since(start)
+		var filetype string
+		vim.OptionValue("filetype", map[string]nvim.OptionValueScope{}, &filetype)
+		if filetype == "" {
+			filetype = filepath.Ext(filename)
+			if len(filetype) > 0 && filetype[0] == '.' {
+				filetype = filetype[1:]
+			}
+			if filetype == "" {
+				filetype = "unknown"
+			}
+		}
+		recordTiming(filetype, len(lines), duration)
+	}
 }
 
 func printLines(vim *nvim.Nvim, lines []string, opts formatOpts) {

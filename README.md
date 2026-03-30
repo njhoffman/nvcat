@@ -72,6 +72,8 @@ nvcat [options] <file>
 
 * `-n`, `--numbers`: Show line numbers
 * `--clean`: Don't load Neovim's config
+* `--time`: Show timing stats and save to `$XDG_CONFIG_HOME/nvcat/timings.json`
+* `--timings`: Show average lines/sec per filetype from saved timing data
 * `-v`, `--version`: Show version information
 * `-h`, `--help`: Show help information
 
