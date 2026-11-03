@@ -10,7 +10,7 @@ setup() {
 }
 
 @test "over budget, Markdown falls back to bat with a notice" {
-  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.01 "$FIXTURES/markdown/sample.md"
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.000001 "$FIXTURES/markdown/sample.md"
   [ "$status" -eq 0 ]
   [[ $stderr == *'showing bat output instead'* ]]
   [[ $output == *'Title'* ]]
@@ -18,14 +18,14 @@ setup() {
 }
 
 @test "the fallback output matches bat's Markdown rendering" {
-  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.01 "$FIXTURES/markdown/sample.md"
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.000001 "$FIXTURES/markdown/sample.md"
   expected=$(bat --color=always --paging=never --style=plain --terminal-width=80 --language=markdown -- \
     "$FIXTURES/markdown/sample.md")
   [ "$output" = "$expected" ]
 }
 
 @test "non-Markdown filetypes fall back to bat without forcing Markdown" {
-  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.01 --filetype kdl -- \
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.000001 --filetype kdl -- \
     "$FIXTURES/kdl/config.kdl"
   [ "$status" -eq 0 ]
   expected=$(bat --color=always --paging=never --style=plain --terminal-width=80 -- "$FIXTURES/kdl/config.kdl")
@@ -33,13 +33,13 @@ setup() {
 }
 
 @test "--fallback=none reports the budget error" {
-  run "$NVCAT" --paging=never --columns 80 --budget 0.01 --fallback=none "$FIXTURES/markdown/sample.md"
+  run "$NVCAT" --paging=never --columns 80 --budget 0.000001 --fallback=none "$FIXTURES/markdown/sample.md"
   [ "$status" -eq 1 ]
   [[ $output == *'longer than the budget'* ]]
 }
 
 @test "the budget does not apply to viewports" {
-  run --separate-stderr "$NVCAT" --paging=never --columns 80 --lines 5 --budget 0.01 \
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --lines 5 --budget 0.000001 \
     "$FIXTURES/markdown/sample.md"
   [ "$status" -eq 0 ]
   [ -z "$stderr" ]
@@ -52,7 +52,7 @@ setup() {
 }
 
 @test "stdin falls back too" {
-  run --separate-stderr bash -c "'$NVCAT' --paging=never --columns 80 --budget 0.01 - < '$FIXTURES/markdown/sample.md'"
+  run --separate-stderr bash -c "'$NVCAT' --paging=never --columns 80 --budget 0.000001 - < '$FIXTURES/markdown/sample.md'"
   [ "$status" -eq 0 ]
   [[ $output == *'Title'* ]]
 }
@@ -60,7 +60,7 @@ setup() {
 @test "fallback output is paged like a normal render" {
   # The stub pager marks its output on stdout: Landlock lets it write only in the run directory.
   NVCAT_PAGER="sh -c 'echo ==PAGED==; cat'" run --separate-stderr \
-    "$NVCAT" --paging=always --columns 80 --budget 0.01 "$FIXTURES/markdown/sample.md"
+    "$NVCAT" --paging=always --columns 80 --budget 0.000001 "$FIXTURES/markdown/sample.md"
   [ "${lines[0]}" = ==PAGED== ]
   [[ $output == *'Title'* ]]
 }
@@ -188,7 +188,7 @@ big_markdown() {
   mkdir "$BATS_TEST_TMPDIR/bin"
   ln -s "$(command -v python3)" "$BATS_TEST_TMPDIR/bin/python3"
   run env PATH="$BATS_TEST_TMPDIR/bin" /usr/bin/python3 "$NVCAT" --nvim "$(command -v nvim)" \
-    --paging=never --columns 80 --budget 0.01 "$FIXTURES/markdown/sample.md"
+    --paging=never --columns 80 --budget 0.000001 "$FIXTURES/markdown/sample.md"
   [ "$status" -eq 1 ]
   [[ $output == *'bat, the fallback renderer, is not installed' ]]
 }
@@ -197,7 +197,7 @@ big_markdown() {
   mkdir "$BATS_TEST_TMPDIR/bin"
   printf '#!/bin/sh\nexit 3\n' > "$BATS_TEST_TMPDIR/bin/bat"
   chmod +x "$BATS_TEST_TMPDIR/bin/bat"
-  run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" "$NVCAT" --paging=never --columns 80 --budget 0.01 \
+  run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" "$NVCAT" --paging=never --columns 80 --budget 0.000001 \
     "$FIXTURES/markdown/sample.md"
   [ "$status" -eq 1 ]
   [[ $output == *'the bat fallback failed with exit status 3' ]]

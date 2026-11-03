@@ -134,3 +134,12 @@ colors() {
   run "$NVCAT" --paging=never --nvim "$BATS_TEST_TMPDIR/no-nvim" "$SAMPLE"
   [ "$status" -eq 1 ]
 }
+
+@test "without a config file, tomllib is not imported" {
+  run --separate-stderr python3 -X importtime "$NVCAT" --check
+  [ "$status" -eq 0 ]
+  [[ $stderr != *tomllib* ]]
+  printf 'icons = false\n' > "$CONFIG"
+  run --separate-stderr python3 -X importtime "$NVCAT" --check
+  [[ $stderr == *tomllib* ]]
+}

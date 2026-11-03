@@ -63,7 +63,7 @@ import importlib.machinery, importlib.util, os, shutil, sys
 from pathlib import Path
 root, checkout = Path(sys.argv[1]), Path(sys.argv[2])
 sys.path.insert(0, str(root))
-loader = importlib.machinery.SourceFileLoader("nvcat_script", str(root / "nvcat"))
+loader = importlib.machinery.SourceFileLoader("nvcat_script", str(root / "nvcat_cli.py"))
 nvcat = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
 loader.exec_module(nvcat)
 checkout.mkdir()

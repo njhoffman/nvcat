@@ -4,7 +4,8 @@
 
 | File | Responsibility |
 | --- | --- |
-| `nvcat` | CLI options, dependency paths, MessagePack RPC, screen decoding, ANSI output, process cleanup |
+| `nvcat` | Entry point: imports `nvcat_cli.command()`, so Python caches the code's bytecode |
+| `nvcat_cli.py` | CLI options, dependency paths, MessagePack RPC, screen decoding, ANSI output, process cleanup |
 | `profile.lua` | Isolated Neovim options, theme and Markdown setup, render-ready signaling |
 | `readonly.py` | Linux Landlock write restriction |
 | `queries/markdown/injections.scm` | C++ fence-label injection |

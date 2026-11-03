@@ -25,7 +25,7 @@ import time
 from common import HERE, ROOT, metadata, wait_for_load
 
 sys.path.insert(0, str(ROOT))
-_loader = importlib.machinery.SourceFileLoader("nvcat_script", str(ROOT / "nvcat"))
+_loader = importlib.machinery.SourceFileLoader("nvcat_script", str(ROOT / "nvcat_cli.py"))
 nvcat = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader.name, _loader))
 _loader.exec_module(nvcat)
 import config  # noqa: E402

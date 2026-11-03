@@ -50,7 +50,7 @@ field() {
 }
 
 @test "the bat fallback is reported as the engine" {
-  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.01 --timings-json "$SAMPLE"
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --budget 0.000001 --timings-json "$SAMPLE"
   [ "$status" -eq 0 ]
   stderr=$(tail -1 <<<"$stderr")  # After the fallback notice
   [ "$(field 'r["engine"], "bat fallback" in r["phases"]')" = "('bat fallback', True)" ]

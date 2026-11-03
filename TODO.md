@@ -88,11 +88,13 @@ Reviewed: 2026-11-03
 - [ ] **cuda query compilation.** (p3) [perf] `vim.treesitter.start` takes ~245 ms of cuda's ~300 ms (inherited
   cpp/c queries; 2026-11-03, was ~390 ms) against ~130 ms total with `--syntax regex`. Consider a per-filetype `syntax` key in filetypes.json, or
   a trimmed query.
-- [ ] **Cut Python's fixed startup.** (p3) [perf] Python compiles the 1,010-line `nvcat` script on every run
+- [x] **Cut Python's fixed startup.** (p3) [perf] Python compiles the 1,010-line `nvcat` script on every run
   (7 ms; a script gets no `.pyc`), and imports take ~20-24 ms (argparse, tomllib for the config). Move the
   code into a module that the `nvcat` entry point imports, so it is cached, and consider skipping tomllib when
   no config file exists. Worth about 5-10 ms per fzf preview, a quarter of the 16-23 ms nvcat costs a small file
   over the Markdown-only v0.1.0.
+  Done in 0.20.0: `nvcat_cli.py` plus a 6-line entry point (7-9 ms less per start), tomllib only with a
+  config file.
 - [x] **benchmarks/run records noisy runs.** (p3) [perf] Its gate is the 1-minute load average (at most 0.6 per
   CPU), which a burst from another process slips under: on 2026-11-03 two runs had to be reverted by hand
   (startup 84-124 ms against 35-45 ms). Keep the threshold, and also refuse to record a run whose startup

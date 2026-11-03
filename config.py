@@ -8,7 +8,6 @@ import glob
 import os
 from pathlib import Path
 import shutil
-import tomllib
 
 # key: (kind, description). Kinds: path, paths (list), string.
 KEYS = {
@@ -75,6 +74,7 @@ def load(path=None):
   path = Path(path) if path else config_file()
   values, sources = defaults(), {key: "default" for key in KEYS}
   if path.is_file():
+    import tomllib  # Only with a config file: about 4 ms of every start otherwise.
     try:
       parsed = tomllib.loads(path.read_text())
     except tomllib.TOMLDecodeError as error:

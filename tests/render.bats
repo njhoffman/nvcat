@@ -122,7 +122,7 @@ for e in filetypes.load(): print(e["filetype"], e.get("lang", e["filetype"]))' "
 import importlib.machinery, importlib.util, shutil, sys, tempfile
 root, path = sys.argv[1], sys.argv[2]
 sys.path.insert(0, root)
-loader = importlib.machinery.SourceFileLoader("nvcat_module", root + "/nvcat")
+loader = importlib.machinery.SourceFileLoader("nvcat_module", root + "/nvcat_cli.py")
 spec = importlib.util.spec_from_loader("nvcat_module", loader)
 module = importlib.util.module_from_spec(spec)
 loader.exec_module(module)

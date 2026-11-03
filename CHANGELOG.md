@@ -6,6 +6,19 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-03
+
+### Changed
+
+- Faster start: the code moved from the `nvcat` script into `nvcat_cli.py`, which the `nvcat` command imports,
+  so Python caches its bytecode instead of compiling 1,000 lines on every run (7-9 ms less per start, 14 ms
+  on a 3-line file's median). tomllib is imported only when a config file exists. Scripts that loaded the
+  `nvcat` file as a module load `nvcat_cli.py` instead.
+
+### Fixed
+
+- The missing-msgpack message pointed at `make deps`; it is `just deps` since 0.13.0.
+
 ## [0.19.0] - 2026-11-03
 
 ### Changed

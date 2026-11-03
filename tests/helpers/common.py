@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT))
 
 
 def load_nvcat():
-  loader = importlib.machinery.SourceFileLoader("nvcat_module", str(ROOT / "nvcat"))
+  loader = importlib.machinery.SourceFileLoader("nvcat_module", str(ROOT / "nvcat_cli.py"))
   spec = importlib.util.spec_from_loader("nvcat_module", loader)
   module = importlib.util.module_from_spec(spec)
   loader.exec_module(module)

@@ -41,7 +41,7 @@ just install   # generate nvcat-dispatch, then symlink it and nvcat into ~/.loca
 just uninstall
 ```
 
-The commands are linked, not copied: nvcat finds `profile.lua`, `readonly.py`, `config.py`,
+The commands are linked, not copied: nvcat finds `nvcat_cli.py`, `profile.lua`, `readonly.py`, `config.py`,
 `filetypes.*` and `queries/` next to its real path, so keep the checkout in place. `nvcat-dispatch` and
 `filetypes.bat.json` are generated on each machine from its bat and are not tracked; run `just dispatch` (or
 `just install` again) after updating the checkout or changing bat's config, and `nvcat --check` warns while

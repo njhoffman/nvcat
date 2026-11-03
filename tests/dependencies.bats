@@ -103,7 +103,7 @@ break_query() {  # lang [name]
   echo 'raise ImportError("No module named msgpack")' > "$BATS_TEST_TMPDIR/python/msgpack/__init__.py"
   PYTHONPATH=$BATS_TEST_TMPDIR/python run "$NVCAT" --paging=never "$BATS_TEST_TMPDIR/sample.md"
   [ "$status" -eq 1 ]
-  [ "$output" = "nvcat: the Python package msgpack is missing; install python3-msgpack or run 'make deps'" ]
+  [ "$output" = "nvcat: the Python package msgpack is missing; install python3-msgpack or run 'just deps'" ]
 }
 
 @test "Lua errors reach the user without their stack trace or location" {
