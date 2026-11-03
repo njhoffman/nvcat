@@ -157,9 +157,27 @@ entry = filetypes.detect(sys.argv[2]); print(entry["filetype"] if entry else "")
   [ "$elapsed" -lt 20 ]
 }
 
-@test "filetypes.regex.json is current with Neovim and bat" {
-  run diff <("$ROOT/gen-filetypes" --no-docs --output - 2>/dev/null) "$ROOT/filetypes.regex.json"
+@test "filetypes.regex.json and SYNTAX.md's generated sections are current with Neovim and bat" {
+  cp "$ROOT/SYNTAX.md" "$BATS_TEST_TMPDIR/SYNTAX.md"
+  run diff <("$ROOT/gen-filetypes" --syntax "$BATS_TEST_TMPDIR/SYNTAX.md" --output - 2>/dev/null) "$ROOT/filetypes.regex.json"
   [ "$status" -eq 0 ]
+  run diff "$BATS_TEST_TMPDIR/SYNTAX.md" "$ROOT/SYNTAX.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "SYNTAX.md's pool sections place parsers and syntaxes by bat coverage" {
+  pools=$(sed -n '/<!-- pools:start -->/,/<!-- pools:end -->/p' "$ROOT/SYNTAX.md")
+  # nvim-treesitter's filetype names and bat's differently named syntaxes count as coverage.
+  for covered in c_sharp tsx objc vimdoc; do
+    ! grep -q "^| \`$covered\` |" <<<"$pools" || { echo "$covered listed"; return 1; }
+  done
+  # Hand-reviewed extension collisions do not.
+  for listed in fsh v liquid; do
+    grep -q "^| \`$listed\` |" <<<"$pools" || { echo "$listed missing"; return 1; }
+  done
+  # Globs from detection functions and from filetypes.json are listed.
+  grep -q '^| `cdrtoc` | `.toc` |' <<<"$pools"
+  grep -q '^| `sxhkdrc` | sxhkdrc | `\*.sxhkdrc`, `sxhkdrc` |' <<<"$pools"
 }
 
 @test "generated filetypes come after filetypes.json and before its last entries" {

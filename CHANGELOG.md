@@ -6,6 +6,28 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-03
+
+### Added
+
+- `./gen-filetypes` regenerates the rest of SYNTAX.md's coverage lists ("Neovim treesitter filetypes not in
+  bat", "Neovim regex syntax filetypes not in bat" and the summary line) from nvcat's own Neovim, with the
+  hand review kept as data (`NOT_COVERED`, `BAT_ALIASES`, nvim-treesitter's parser filetypes). They now
+  describe what nvcat can load: syntaxes from plugins and the user's config are gone, parsers whose files
+  only a plugin detects move to "Parsers with no file mapping", and the file lists include globs Neovim
+  decides by content and those of filetypes.json. `--syntax PATH` writes to another copy of SYNTAX.md, and
+  `tests/dispatch.bats` fails while the sections are stale.
+- 10 more content-detected globs route to `nvcat --filetype auto` (85 in all): the scan of Neovim's
+  detection functions now follows nested `detect.*` calls and the results passed as arguments, which adds
+  `*.com`, `*.dcl`, `*.dsl`, `*.ms`, `*.pro`, `*.xpm`, `.tcshrc`, `tcsh.login`, `tcsh.tcshrc` and
+  `indent.pro`. `README` and `*.map` are skipped: Neovim's content checks almost never give them an nvcat
+  filetype.
+
+### Changed
+
+- A justfile replaces the Makefile, with the same recipe names (`just install`, `just test`, `just filetypes`,
+  ...); `just` lists them, and `just test` and `just bench-filetypes` pass their arguments on.
+
 ## [0.12.0] - 2026-11-03
 
 ### Added

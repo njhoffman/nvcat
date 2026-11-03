@@ -1,0 +1,83 @@
+# nvcat: install links, dependency checks, tests, benchmarks. Run `just` for the list.
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+prefix := env("PREFIX", home_directory() / ".local")
+bindir := env("BINDIR", prefix / "bin")
+commands := "nvcat nvcat-dispatch"
+python := "/usr/bin/python3"
+
+# List the recipes
+default:
+    @just --list --unsorted
+
+# Links, not copies: nvcat finds profile.lua, readonly.py and queries/ next to its real path.
+
+# Link nvcat and nvcat-dispatch into BINDIR (PREFIX=... or BINDIR=... to change)
+install: check
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{ bindir }}"
+    for command in {{ commands }}; do
+      target="{{ bindir }}/$command"
+      if [[ -e $target && ! -L $target ]]; then
+        echo "$target exists and is not a symlink; move it away first" >&2
+        exit 1
+      fi
+      ln -sfn "{{ justfile_directory() }}/$command" "$target" && echo "linked $target -> {{ justfile_directory() }}/$command"
+    done
+
+# Remove the links install made, if they point into this checkout
+uninstall:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for command in {{ commands }}; do
+      target="{{ bindir }}/$command"
+      if [[ -L $target && $(readlink "$target") == "{{ justfile_directory() }}/$command" ]]; then
+        rm "$target" && echo "removed $target"
+      elif [[ -e $target ]]; then
+        echo "skipped $target: not a link into {{ justfile_directory() }}"
+      fi
+    done
+
+# Runtime dependencies and resolved configuration (nvcat --check)
+check:
+    @{{ python }} -c 'import sys; sys.exit("python 3.11 or later required (tomllib)") if sys.version_info < (3, 11) else None'
+    @{{ python }} -c 'import msgpack' 2>/dev/null || { echo "python msgpack missing: run 'just deps' or install python3-msgpack" >&2; exit 1; }
+    @./nvcat --check
+
+# Development tools for the tests
+check-dev:
+    #!/usr/bin/env bash
+    status=0
+    for tool in bats script fzf bat less git hyperfine; do
+      if command -v "$tool" >/dev/null 2>&1; then printf '  %-9s %s\n' "$tool" "$("$tool" --version 2>&1 | head -1)"
+      else printf '  %-9s missing\n' "$tool"; status=1; fi
+    done
+    bats --version 2>/dev/null | awk '{ split($2, v, "."); if (v[1] < 1 || (v[1] == 1 && v[2] < 5)) { print "  bats 1.5 or later required"; exit 1 } }' || status=1
+    exit $status
+
+# Install the Python dependency for the current user (pip)
+deps:
+    {{ python }} -m pip install --user -r requirements.txt
+
+# Run the bats suite; arguments go to bats (e.g. just test tests/dispatch.bats)
+test *args="tests/":
+    bats {{ args }}
+
+# Run benchmarks/run (records history, updates SYNTAX.md)
+bench:
+    benchmarks/run
+
+# Run benchmarks/filetypes (records the baseline, updates docs/PERFORMANCE.md)
+bench-filetypes *args:
+    benchmarks/filetypes {{ args }}
+
+# Regenerate nvcat-dispatch and filetypes.bat.json from the filetype tables and bat
+dispatch:
+    ./gen-dispatch
+
+# Regenerate filetypes.regex.json and the generated SYNTAX.md sections, then nvcat-dispatch
+filetypes:
+    ./gen-filetypes
+    ./gen-dispatch

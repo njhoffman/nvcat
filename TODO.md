@@ -153,7 +153,7 @@ Reviewed: 2026-10-31
 
 ## Optional support for other filetypes
 
-- [ ] **SYNTAX.md has no regeneration script.** (p3) [chore] The Neovim-vs-bat comparison in `SYNTAX.md`
+- [x] **SYNTAX.md has no regeneration script.** (p3) [chore] The Neovim-vs-bat comparison in `SYNTAX.md`
   was produced by an ad hoc Lua/Python scan plus hand review of extension collisions. `./gen-filetypes` now
   regenerates the generated regex-filetypes table and carries the collision overrides (`NOT_COVERED`); the
   two pool sections ("treesitter filetypes not in bat", "regex syntax filetypes not in bat") are still

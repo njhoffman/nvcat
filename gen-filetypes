@@ -1,5 +1,6 @@
 #!/usr/bin/python3
-"""Generate filetypes.regex.json, the Neovim regex-syntax filetypes bat has no syntax for, and its SYNTAX.md table.
+"""Generate filetypes.regex.json, the Neovim regex-syntax filetypes bat has no syntax for, and SYNTAX.md's
+generated sections: that table, and the lists of Tree-sitter parsers and regex syntaxes bat does not cover.
 
 A filetype qualifies when nvcat's own Neovim (isolated, with nvcat's runtimepath) has a syntax/FILETYPE.vim
 for it, no Tree-sitter highlights query for its language, no entry in filetypes.json, and no bat coverage:
@@ -11,8 +12,8 @@ claims are dropped, so bat keeps them.
 Extensions and file names that Neovim assigns with a detection function (by content: .w is cweb or progress)
 become "auto" entries when the function's Lua source names one of nvcat's filetypes: nvcat-dispatch sends
 them to `nvcat --filetype auto`, which lets Neovim decide and hands any other result to bat. The scan reads
-each function's source and follows detect.* calls and string upvalues one level, so it depends on how
-Neovim's runtime/lua/vim/filetype.lua is written; tests/dispatch.bats pins a few known globs.
+each function's source and follows detect.* calls, string upvalues and short argument lists, so it depends on
+how Neovim's runtime/lua/vim/filetype.lua is written; tests/dispatch.bats pins a few known globs.
 Run ./gen-dispatch afterwards."""
 
 import argparse
@@ -21,9 +22,11 @@ import importlib.machinery
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 
 import config
 import filetypes
@@ -31,20 +34,56 @@ import filetypes
 ROOT = Path(__file__).resolve().parent
 SYNTAX_MD = ROOT / "SYNTAX.md"
 START, END = "<!-- regex-filetypes:start -->", "<!-- regex-filetypes:end -->"
+SUMMARY = ("<!-- pools-summary:start -->", "<!-- pools-summary:end -->")
+POOLS = ("<!-- pools:start -->", "<!-- pools:end -->")
 
 # Hand-reviewed false matches: a bat extension that Neovim maps to this filetype, but bat's syntax is for a
 # different language (see "Neovim regex syntax filetypes not in bat" in SYNTAX.md). bat keeps the shared
 # globs; the filetype's other globs still go to nvcat. The second line comes from bat's compound names:
 # go.sum (.sum: hercules), Makefile.am (.am: elf), extension-release.* (.x: rpcgen), and from bat extensions of
-# other languages: .pac (PAC proxy JavaScript), .gs, .cm, .task.
+# other languages: .pac (PAC proxy JavaScript), .gs, .cm, .task. The third: .fsh (GLSL shader, not FHIR
+# Shorthand), .v (Verilog, not V), *.css.liquid (CSS), .ad (AsciiDoc, not X app-defaults).
 NOT_COVERED = {"atlas", "cobol", "progress", "lex", "lifelines", "inform", "pov", "tads", "st", "conf",
-               "elf", "hercules", "rpcgen", "plm", "grads", "voscm", "taskedit"}
+               "elf", "hercules", "rpcgen", "plm", "grads", "voscm", "taskedit",
+               "fsh", "v", "vlang", "liquid", "xdefaults"}
+
+# bat syntaxes whose names differ from the Neovim filetype they cover (besides names that match once
+# lowercased with punctuation removed, and a name in parentheses such as "Bourne Again Shell (bash)").
+BAT_ALIASES = {"asm": "x86_64 Assembly", "objc": "Objective-C", "objcpp": "Objective-C++", "slim": "Ruby Slim",
+               "help": "VimHelp"}
+
+# Filetypes nvim-treesitter registers for parsers whose name is not the filetype (its plugin/filetypes.lua,
+# 2026-11-02). nvcat's Neovim does not load nvim-treesitter; this table only places parsers in SYNTAX.md.
+PARSER_FILETYPES = {
+  "angular": ["htmlangular"], "bash": ["sh"], "bibtex": ["bib"], "c_sharp": ["cs", "csharp"],
+  "commonlisp": ["lisp"], "cooklang": ["cook"], "devicetree": ["dts"], "diff": ["gitdiff"], "eex": ["eelixir"],
+  "elixir": ["ex"], "embedded_template": ["eruby"], "erlang": ["erl"], "facility": ["fsd"], "faust": ["dsp"],
+  "gdshader": ["gdshaderinc"], "git_config": ["gitconfig"], "git_rebase": ["gitrebase"],
+  "glimmer": ["handlebars", "html.handlebars"], "godot_resource": ["gdresource"], "haskell": ["hs"],
+  "haskell_persistent": ["haskellpersistent"], "idris": ["idris2"], "ini": ["confini", "dosini"],
+  "janet_simple": ["janet"], "javascript": ["javascriptreact", "ecma", "ecmascript", "jsx", "js"],
+  "json": ["jsonc"], "glimmer_javascript": ["javascript.glimmer"], "latex": ["tex"], "linkerscript": ["ld"],
+  "m68k": ["asm68k"], "make": ["automake"], "markdown": ["pandoc"], "muttrc": ["neomuttrc"],
+  "ocaml_interface": ["ocamlinterface"], "perl": ["pl"], "poe_filter": ["poefilter"], "powershell": ["ps1"],
+  "properties": ["jproperties"], "python": ["py", "gyp"], "qmljs": ["qml"], "runescript": ["clientscript"],
+  "scala": ["sbt"], "slang": ["shaderslang"], "sqp": ["mysqp"], "ssh_config": ["sshconfig"],
+  "starlark": ["bzl"], "surface": ["sface"], "systemverilog": ["verilog"], "t32": ["trace32"],
+  "tcl": ["expect"], "terraform": ["terraform-vars"], "textproto": ["pbtxt"], "tlaplus": ["tla"],
+  "tsx": ["typescriptreact", "typescript.tsx"], "typescript": ["ts"], "glimmer_typescript": ["typescript.glimmer"],
+  "typst": ["typ"], "udev": ["udevrules"], "uxntal": ["tal", "uxn"], "v": ["vlang"], "vhs": ["tape"],
+  "xml": ["xsd", "xslt", "svg"], "xresources": ["xdefaults"],
+}
+
+# Syntax files that are Vim machinery, not a filetype.
+HELPERS = {"2html", "colortest", "hitest", "manual", "nosyntax", "syncolor", "synload", "syntax", "whitespace"}
 
 # Globs too generic to claim for a regex syntax (Neovim reaches these only through content checks), and
 # globs of binary formats (gettext catalogs, LLVM bitcode, debug databases, Java class files) that would only
 # cost an nvcat start before its NUL check hands them to bat.
+# README and *.map (mostly JavaScript source maps) are common names that Neovim's content checks almost never
+# give an nvcat filetype (haredoc, lnkmap), so each would cost a Neovim start before bat.
 SKIP_GLOBS = {"*.txt", "*.text", "*.log", "*.bak", "*.in", "*.dat", "*.def", "*.inc", "*.cfg", "*.src",
-              "*.mo", "*.bc", "*.pdb", "*.class"}
+              "*.mo", "*.bc", "*.pdb", "*.class", "readme", "*.map"}
 
 INVENTORY = r"""
 local s = vim.json.decode(vim.env.NVCAT_SESSION)
@@ -93,11 +132,30 @@ local function words(f, depth)
   for index = 1, 20 do
     local name, value = debug.getupvalue(f, index)
     if name == nil then break end
-    if type(value) == "string" then body = body .. "\ndetect." .. value end
-    if type(value) == "function" and depth < 2 then body = body .. "\n" .. words(value, depth + 1) end
+    -- A string upvalue is a detector's name or a result ('dcl' in detect_seq(detect.bindzone, 'dcl')).
+    -- Tables: only short argument lists ({...} in detect_seq), not the filetype maps that suffix-stripping
+    -- detectors (*.bak, *.orig) close over.
+    local values = { value }
+    if type(value) == "table" then
+      values = vim.islist(value) and #value <= 8 and value or {}
+    end
+    for _, item in ipairs(values) do
+      if type(item) == "string" then body = body .. "\ndetect." .. item .. " '" .. item .. "'" end
+      if type(item) == "function" and depth < 2 then body = body .. "\n" .. words(item, depth + 1) end
+    end
   end
-  for name in body:gmatch("detect['\"]?%)?%.([%w_]+)") do
-    if type(detect[name]) == "function" then body = body .. "\n" .. lines_of(detect[name]) end
+  -- Follow detect.* calls transitively (detect.toc -> detect.cdrtoc ...), each detector once.
+  local seen, pending = {}, { body }
+  while #pending > 0 do
+    local text = table.remove(pending)
+    for name in text:gmatch("detect['\"]?%)?%.([%w_]+)") do
+      if not seen[name] and type(detect[name]) == "function" then
+        seen[name] = true
+        local source = lines_of(detect[name])
+        body = body .. "\n" .. source
+        table.insert(pending, source)
+      end
+    end
   end
   return body
 end
@@ -112,6 +170,18 @@ end
 local registry = vim.filetype.inspect()
 for key, value in pairs(registry.extension) do scan("extension", key, value) end
 for key, value in pairs(registry.filename) do scan("filename", key, value) end
+for _, group in pairs(registry.pattern) do
+  for key, value in pairs(group) do scan("pattern", key, value) end
+end
+out.parsers = {}
+for _, file in ipairs(vim.api.nvim_get_runtime_file("parser/*.so", true)) do
+  local lang = vim.fn.fnamemodify(file, ":t:r")
+  if out.parsers[lang] == nil then
+    local ok = pcall(vim.treesitter.language.add, lang)
+    out.parsers[lang] = { file = file, filetypes = vim.treesitter.language.get_filetypes(lang),
+      highlights = ok and #vim.treesitter.query.get_files(lang, "highlights") > 0 }
+  end
+end
 for key, value in pairs(registry.extension) do add("extension", key, value) end
 for key, value in pairs(registry.filename) do add("filename", key, value) end
 for _, group in pairs(registry.pattern) do
@@ -196,6 +266,8 @@ def detected(data, ours, bat_globs):
   curated = [entry for entry in filetypes.load() if not entry.get("last")]
   groups = {}
   for item in sorted(data["detectors"], key=lambda item: (item["kind"], item["key"])):
+    if item["kind"] == "pattern":
+      continue
     results = sorted(set(item["words"]) & ours)
     kind = "extensions" if item["kind"] == "extension" else "paths" if "/" in item["key"] else "names"
     glob = item["key"].lower() if kind == "extensions" else item["key"]
@@ -289,10 +361,179 @@ def table(rows, auto, nvim_version, bat_version):
   return "\n".join(lines + ["", END])
 
 
+def normalized(name):
+  return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def bat_covers(data, bat_names):
+  """Whether bat has a syntax for a Neovim filetype: by name (see BAT_ALIASES), or by one of bat's file names
+  or extensions that Neovim detects as the filetype; NOT_COVERED overrides both."""
+  names = {normalized(name) for name in bat_names}
+  names |= {normalized(inner) for name in bat_names for inner in re.findall(r"\(([^)]+)\)", name)}
+  names |= {normalized(filetype) for filetype, syntax in BAT_ALIASES.items() if syntax in bat_names}
+  detected = set(data["covered"])
+  return lambda filetype: filetype not in NOT_COVERED and (filetype in detected or normalized(filetype) in names)
+
+
+FILES_NOTE = ("\"Files\" lists up to six extensions (`.ext`) and file names that Neovim's filetype registry "
+              "(`vim.filetype.inspect()`) or nvcat's filetypes.json gives the filetype, including those where a "
+              "Neovim detection function decides by content, plus a count of path patterns. \"Detected at "
+              "runtime\" means only a pattern function gives it.")
+
+
+def prose(text, width=110):
+  return textwrap.wrap(text, width, break_on_hyphens=False)
+
+
+def pools(data, bat_names):
+  """The two SYNTAX.md sections listing what Neovim highlights and bat does not: (Tree-sitter, regex)."""
+  covers = bat_covers(data, bat_names)
+  files, runtime = {}, set()  # files: filetype -> [{lowercase glob: shown glob}, pattern count]
+
+  def add(filetype, glob):
+    """glob: ("ext", extension) or ("name", file name or path); case variants collapse to the lowercase one."""
+    kind, text = glob
+    key = (kind, text.lower())
+    globs = files.setdefault(filetype, [{}, 0])[0]
+    if key not in globs or text.islower():
+      globs[key] = glob
+
+  for item in data["registry"]:
+    if item["kind"] == "pattern":
+      files.setdefault(item["filetype"], [{}, 0])[1] += 1
+    else:
+      add(item["filetype"], ("ext", item["key"]) if item["kind"] == "extension" else ("name", item["key"]))
+  for item in data["detectors"]:
+    runtime.update(item["words"])
+    if item["kind"] != "pattern":
+      for word in item["words"]:
+        if word in data["syntax"] or any(word in info["filetypes"] for info in data["parsers"].values()):
+          add(word, ("ext", item["key"]) if item["kind"] == "extension" else ("name", item["key"]))
+  for entry in filetypes.load():  # nvcat's own table maps some filetypes Neovim does not know by name
+    for extension in entry.get("extensions", []):
+      add(entry["filetype"], ("ext", extension))
+    for glob in entry.get("names", []) + entry.get("paths", []):
+      add(entry["filetype"], ("name", glob))
+
+  def has_files(filetype):
+    return filetype in files or filetype in runtime
+
+  def shown(names):
+    globs, patterns = {}, 0
+    for filetype in names:
+      globs.update(files.get(filetype, [{}, 0])[0])
+      patterns += files.get(filetype, [{}, 0])[1]
+    if not globs and not patterns:
+      return "detected at runtime"
+    # Extensions first, then names and paths, each sorted.
+    globs = [f".{text}" if kind == "ext" else text
+             for kind, text in sorted(globs.values(), key=lambda glob: (glob[0], glob[1].lower()))]
+    parts = [f"`{glob}`" for glob in globs[:6]] + ([f"{len(globs) - 6} more"] if len(globs) > 6 else [])
+    parts += [f"{patterns} pattern{'s' if patterns > 1 else ''}"] if patterns else []
+    return ", ".join(parts)
+
+  parsers = {}
+  for lang, info in data["parsers"].items():
+    names = list(dict.fromkeys(info["filetypes"] + PARSER_FILETYPES.get(lang, [])))
+    parsers[lang] = (names, info["highlights"])
+  parser_of = {}
+  for lang, (names, _) in sorted(parsers.items()):
+    for filetype in names:
+      parser_of.setdefault(filetype, lang)
+  uncovered = {lang: value for lang, value in parsers.items() if not any(covers(name) for name in value[0])}
+  header = ["| Parser | Neovim filetypes | Files | Notes |", "|---|---|---|---|"]
+  with_files, without = [], []
+  for lang in sorted(uncovered):
+    names, highlights = uncovered[lang]
+    row = (f"| `{lang}` | {', '.join(names)} | {shown(names)} | "
+           f"{'' if highlights else 'no highlights query installed'} |")
+    (with_files if any(has_files(name) for name in names) else without).append(row)
+  treesitter = [
+    "## Neovim treesitter filetypes not in bat",
+    "",
+    *prose(f"Covers the Tree-sitter parsers on nvcat's runtimepath. A parser counts as covered by bat when bat "
+           "has a syntax for one of the parser's filetypes, by name or by a file extension or name that Neovim "
+           f"maps to that filetype. {len(parsers) - len(uncovered)} parsers are covered; the {len(with_files)} "
+           f"below are not, plus {len(without)} with no file mapping. Extension collisions such as `.fsh` (GLSL "
+           "shader vs. FHIR Shorthand), `.v` (Verilog vs. V), `.ad` (AsciiDoc vs. X app-defaults) and "
+           "`*.css.liquid` do not count as coverage (`NOT_COVERED` in `gen-filetypes`). A parser's filetypes "
+           "include those nvim-treesitter registers for it."),
+    "",
+    *prose(FILES_NOTE + " \"No highlights query installed\" means the parser exists but Neovim has no "
+           "Tree-sitter highlighting for it; Neovim may still highlight that filetype with a regex syntax file "
+           "(see the next section)."),
+    "",
+    *header, *with_files,
+    "",
+    "### Parsers with no file mapping",
+    "",
+    *prose("No file name, extension, pattern or detection function in nvcat's Neovim gives these parsers' "
+           "filetypes. Most highlight regions inside other languages (comments, doc comments, regex and format "
+           "strings, inline Markdown) or Neovim-internal buffers; the rest are languages whose files only a "
+           "plugin detects. To render one with nvcat, add it to filetypes.json or pass `--filetype`."),
+    "",
+    *header, *without,
+  ]
+  syntaxes = sorted(set(data["syntax"]) - HELPERS)
+  regex_uncovered = [name for name in syntaxes if not covers(name)]
+  file_rows, buffer_rows = [], []
+  for name in regex_uncovered:
+    lang = parser_of.get(name, "")
+    parser = f"`{lang}`" if lang else ""
+    if has_files(name):
+      file_rows.append(f"| `{name}` | {shown([name])} | {parser} |")
+    else:
+      buffer_rows.append(f"| `{name}` | {parser} |")
+  regex = [
+    "## Neovim regex syntax filetypes not in bat",
+    "",
+    *prose(f"Covers every `syntax/*.vim` file on nvcat's runtimepath (Neovim's own runtime; plugins and the "
+           f"user's config are not loaded). {len(syntaxes)} filetypes have a regex syntax file (helper files "
+           f"such as `syncolor` and `2html` are excluded); {len(syntaxes) - len(regex_uncovered)} are covered by "
+           f"bat under the same rules as above, and the {len(regex_uncovered)} below are not. Hand review dropped "
+           "false matches including `atlas` (`.as`), `cobol` (`.cpy`), `progress` (`.p`), `lex` (`.l`), "
+           "`lifelines` (`.ll`), `inform` (`.inf`), `pov` (`.inc`), `tads` (`.t`) and `st` (`.cls`); the "
+           "generic `conf` filetype is not covered by bat's DotENV syntax either."),
+    "",
+    *prose("Caveat: coverage was checked through Neovim's detection of bat's file names and extensions. Where "
+           "Neovim detects a filetype only by full path (systemd units), a bat match can be missed; "
+           "`gen-dispatch` checks bat's own patterns directly and is authoritative for routing."),
+    "",
+    *prose(FILES_NOTE + " \"Tree-sitter parser\" names the installed parser for the same filetype, if any."),
+    "",
+    "### File types",
+    "",
+    "| Filetype | Files | Tree-sitter parser |",
+    "|---|---|---|",
+    *file_rows,
+    "",
+    "### Editor buffers and include-only syntaxes",
+    "",
+    *prose("These have a syntax file but nothing in Neovim's filetype registry gives them: editor UI buffers "
+           "(`qf`), syntaxes only included by other syntaxes, and filetypes set only by a modeline, shebang, or "
+           "plugin."),
+    "",
+    "| Filetype | Tree-sitter parser |",
+    "|---|---|",
+    *buffer_rows,
+  ]
+  return "\n".join(treesitter + [""] + regex), len(parsers)
+
+
+def replace_block(document, markers, body):
+  start, end = markers
+  if start not in document:
+    raise SystemExit(f"gen-filetypes: no {start} block in SYNTAX.md")
+  before, rest = document.split(start, 1)
+  return before + start + "\n" + body + "\n" + end + rest.split(end, 1)[1]
+
+
 def main():
   parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.add_argument("--output", default=str(filetypes.GENERATED), help="JSON file to write, or - for stdout")
   parser.add_argument("--no-docs", action="store_true", help="Leave SYNTAX.md alone")
+  parser.add_argument("--syntax", type=Path, default=SYNTAX_MD,
+                      help="SYNTAX.md to update in place (default: the checkout's)")
   args = parser.parse_args()
   bat_version, patterns = filetypes.bat_patterns()
   bat_globs = sorted({glob for _, glob in patterns})
@@ -315,12 +556,18 @@ def main():
     Path(args.output).write_text(text)
     print(f"Wrote {args.output} ({len(rows)} filetypes, {len(entries)} entries)", file=sys.stderr)
   if not args.no_docs:
-    document = SYNTAX_MD.read_text()
+    document = args.syntax.read_text()
     if START not in document:
       raise SystemExit(f"gen-filetypes: no {START} block in SYNTAX.md")
     before, rest = document.split(START, 1)
     after = rest.split(END, 1)[1]
-    SYNTAX_MD.write_text(before + table(rows, auto, nvim_version, bat_version) + after)
+    document = before + table(rows, auto, nvim_version, bat_version) + after
+    body, parser_count = pools(data, bat_names)
+    document = replace_block(document, POOLS, body)
+    summary = (f"Generated by `./gen-filetypes` against Neovim `{nvim_version.split()[-1]}`, bat {bat_version} "
+               f"({len(bat_names)} syntaxes, including\nthe `--map-syntax` entries in the bat config), and the "
+               f"{parser_count} Tree-sitter parsers on nvcat's runtimepath.")
+    args.syntax.write_text(replace_block(document, SUMMARY, summary))
   return 0
 
 

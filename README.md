@@ -12,13 +12,13 @@ See [CHANGELOG.md](CHANGELOG.md), [TODO.md](TODO.md), [SYNTAX.md](SYNTAX.md) (fi
 
 ## Requirements
 
-Runtime (`make check`, or `nvcat --check`, verifies these and prints the versions found):
+Runtime (`just check`, or `nvcat --check`, verifies these and prints the versions found):
 
 | Dependency | Required | Tested with | Notes |
 |---|---|---|---|
 | Linux with Landlock | yes | kernel 6.17, ABI 7 | x86-64 |
 | Python | yes | 3.13.7 | 3.11 or later (`tomllib`); run as `/usr/bin/python3` |
-| msgpack (Python) | yes | 1.0.3 | `apt install python3-msgpack`, or `make deps` (pip, user install) |
+| msgpack (Python) | yes | 1.0.3 | `apt install python3-msgpack`, or `just deps` (pip, user install) |
 | Neovim | yes | 0.11.7, 0.12.6, v0.13.0-dev-1915+gc5641b2bfb | 0.11 or later; older versions are refused. `tests/nvim-versions` runs the suite on released versions |
 | render-markdown.nvim | yes | v8.14.0-2-g8e87953 | any plugin manager; found under `plugin_dirs` |
 | mini.icons | no | v0.18.0-5-g9e4c164 | icons need a Nerd Font |
@@ -26,7 +26,7 @@ Runtime (`make check`, or `nvcat --check`, verifies these and prints the version
 | bat | no | 0.26.1 | fallback renderer and `nvcat-dispatch` |
 | less | no | 668 | `--pager less` (the default pager is the built-in Neovim one) |
 
-Development (`make check-dev`): bats 1.5 or later, `script` (util-linux), fzf, git; curl for `tests/nvim-versions`.
+Development (`just check-dev`; the recipes need [just](https://github.com/casey/just)): bats 1.5 or later, `script` (util-linux), fzf, git; curl for `tests/nvim-versions`.
 
 Tree-sitter parsers must match the Neovim that loads them: a parser built for a newer Tree-sitter ABI (or
 any parser file that fails to load) gives one warning and regex syntax for that language instead of an error.
@@ -36,14 +36,14 @@ Dependencies are read from an existing installation; no plugin manager runs.
 ## Install
 
 ```sh
-make check     # dependencies and resolved configuration
-make install   # symlink nvcat and nvcat-dispatch into ~/.local/bin (PREFIX=... to change)
-make uninstall
+just check     # dependencies and resolved configuration
+just install   # symlink nvcat and nvcat-dispatch into ~/.local/bin (PREFIX=... to change)
+just uninstall
 ```
 
 The commands are linked, not copied: nvcat finds `profile.lua`, `readonly.py`, `config.py`,
-`filetypes.*` and `queries/` next to its real path, so keep the checkout in place. `make test`, `make bench`
-and `make dispatch` run the tests, the benchmarks and the dispatch generator.
+`filetypes.*` and `queries/` next to its real path, so keep the checkout in place. `just test`, `just bench`
+and `just dispatch` run the tests, the benchmarks and the dispatch generator.
 
 ## Configuration
 
@@ -71,7 +71,7 @@ the directory that has both.
 
 ## Usage
 
-Run from the checkout or after `make install`:
+Run from the checkout or after `just install`:
 
 ```sh
 ./nvcat README.md
@@ -218,7 +218,7 @@ over all ready callbacks; `ready_callbacks` counts those), ANSI encoding,
 close, and output. `rpc handling (python)` is the part of the waits that Python spent decoding redraw events,
 not extra time. The Neovim pager is not timed. Timings are printed on failures too.
 
-Install with `make install` (see [Install](#install)).
+Install with `just install` (see [Install](#install)).
 
 ## fzf
 
@@ -256,8 +256,8 @@ which costs a Neovim start before bat takes over when the content is not one of 
 The script is a generated bash `case` (a few milliseconds, no Neovim or Python start-up); the generated
 filetypes sit in a second stage that bash only parses for files the first stage does not match. Regenerate it
 with `./gen-dispatch` (which also writes `filetypes.bat.json`) after editing [filetypes.json](filetypes.json) or changing bat's syntaxes or
-`--map-syntax` config, and run `./gen-filetypes` first when Neovim, its syntax files or parsers, or bat
-change (`make filetypes` runs both); `tests/dispatch.bats` fails while either is stale. Link it onto PATH like `nvcat`. See
+`--map-syntax` config, and run `./gen-filetypes` (which also regenerates SYNTAX.md's coverage lists) first when Neovim, its syntax
+files or parsers, or bat change (`just filetypes` runs both); `tests/dispatch.bats` fails while either is stale. Link it onto PATH like `nvcat`. See
 [development and integration notes](docs/DEVELOPMENT.md).
 
 ## Benchmarks
@@ -284,7 +284,7 @@ Times each filetype on its fixture and on that fixture repeated to 500 lines wit
 `--syntax regex`, a viewport, bat, and `nvcat-dispatch`, plus one `--timings-json` run for the phase
 split. Results go to `benchmarks/filetypes.tsv` and [docs/PERFORMANCE.md](docs/PERFORMANCE.md). `--check`
 exits 1 when a filetype got slower than the baseline by 25% and 50 ms (`--threshold`, `--min-ms`). Needs
-hyperfine. `make bench-filetypes` runs it.
+hyperfine. `just bench-filetypes` runs it.
 
 ## Tests
 
@@ -292,7 +292,7 @@ hyperfine. `make bench-filetypes` runs it.
 bats tests/
 ```
 
-`make test` runs the same. Files: `dispatch.bats` (routing, with stub commands), `render.bats` (every table
+`just test` runs the same. Files: `dispatch.bats` (routing, with stub commands), `render.bats` (every table
 filetype through the configured Neovim), `pager.bats` (the built-in Neovim pager, driven in a pty),
 `paging.bats` (external pagers), `fallback.bats` (every limit), `config.bats`, `timings.bats` (`--timings`,
 `--syntax`), `dependencies.bats` (query mismatches, missing dependencies), `inputs.bats` (extension case,

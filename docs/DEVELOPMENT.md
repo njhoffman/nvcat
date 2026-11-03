@@ -35,7 +35,7 @@ luac -p profile.lua
 ./nvcat --columns 120 --lines 40 README.md > /tmp/nvcat-viewport.ansi
 ```
 
-The bats suite (`make test`) covers what the initial experiments checked, with self-contained fixtures in
+The bats suite (`just test`) covers what the initial experiments checked, with self-contained fixtures in
 `tests/fixtures/reference/` and temporary output directories: complete-document tails and viewport heights,
 Unicode through Neovim's terminal emulator (`tests/helpers/roundtrip.py`), finite stdin, literal filenames,
 modelines, errors, SIGTERM/SIGINT/SIGKILL cleanup, source immutability, the Landlock sandbox, per-language
