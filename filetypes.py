@@ -1,4 +1,5 @@
-"""Filetype table shared by nvcat, gen-dispatch and gen-filetypes; see filetypes.json and filetypes.regex.json."""
+"""Filetype table shared by nvcat, gen-dispatch and gen-filetypes; see filetypes.json, filetypes.regex.json and
+filetypes.bat.json."""
 
 from fnmatch import fnmatchcase
 import json
@@ -8,6 +9,8 @@ import re
 
 TABLE = Path(__file__).resolve().parent / "filetypes.json"
 GENERATED = Path(__file__).resolve().parent / "filetypes.regex.json"
+CLAIMS = Path(__file__).resolve().parent / "filetypes.bat.json"
+AUTO = "auto"  # The filetype of generated entries that Neovim detects by content (see gen-filetypes).
 HEAD_LINES = 40
 _cache = {}
 
@@ -91,7 +94,9 @@ def _index(entries):
 def detect(path, entries=None):
   """Return the first entry matching path, mirroring the generated nvcat-dispatch."""
   if entries is None:
-    # filetypes.json's entries come first, so a match there needs no generated table.
+    # As in nvcat-dispatch, bat's claims come first, then filetypes.json, whose matches need no generated table.
+    if detect(path, claims()):
+      return None
     curated = [entry for entry in load() if not entry.get("last")]
     return detect(path, curated) or detect(path, ordered())
   key = ("index", id(entries))
@@ -111,6 +116,27 @@ def detect(path, entries=None):
     if requirement_met(entries[index], path):
       return entries[index]
   return None
+
+
+def claims():
+  """bat's file names and globs that an entry would otherwise take, as written by gen-dispatch: entries with
+  "paths" only, so detect can match them."""
+  if "claims" not in _cache:
+    try:
+      with open(CLAIMS, encoding="utf-8") as handle:
+        claimed = json.load(handle)["claims"]
+    except FileNotFoundError:
+      claimed = []
+    _cache["claims"] = [{"filetype": syntax, "paths": [glob]} for syntax, glob in claimed]
+  return _cache["claims"]
+
+
+def accepted():
+  """Filetypes nvcat renders for --filetype auto: every table filetype and every possible 'auto' result."""
+  if "accepted" not in _cache:
+    _cache["accepted"] = {"markdown"} | {name for entry in ordered()
+                                         for name in [entry["filetype"], *entry.get("detect", [])]} - {AUTO}
+  return _cache["accepted"]
 
 
 def find(filetype, entries=None):

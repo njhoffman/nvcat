@@ -20,7 +20,13 @@ route() {
 }
 
 @test "generated script is current with filetypes.json and bat" {
-  run diff <("$ROOT/gen-dispatch" --output -) "$DISPATCH"
+  run diff <("$ROOT/gen-dispatch" --output - --claims -) "$DISPATCH"
+  [ "$status" -eq 0 ]
+}
+
+@test "filetypes.bat.json is current with bat" {
+  "$ROOT/gen-dispatch" --output "$BATS_TEST_TMPDIR/dispatch" --claims "$BATS_TEST_TMPDIR/claims.json" 2>/dev/null
+  run diff "$BATS_TEST_TMPDIR/claims.json" "$ROOT/filetypes.bat.json"
   [ "$status" -eq 0 ]
 }
 
@@ -187,8 +193,11 @@ entry = filetypes.detect(sys.argv[2]); print(entry["filetype"] if entry else "")
 import sys; sys.path.insert(0, sys.argv[1]); import filetypes
 from fnmatch import fnmatchcase
 entries = filetypes.ordered()
+claimed = [glob.lower() for entry in filetypes.claims() for glob in entry["paths"]]
 def slow(path):
   folded = path.lower()
+  if any(fnmatchcase(folded, glob) for glob in claimed):
+    return None
   for entry in entries:
     if any(fnmatchcase(folded, glob.lower()) for glob in filetypes.globs(entry)) and filetypes.requirement_met(entry, path):
       return entry
@@ -206,4 +215,35 @@ sys.exit(1 if bad else 0)' "$ROOT"
   elapsed=$(( ($(date +%s%N) - start) / 10000000 ))
   echo "average ${elapsed}ms"
   [ "$elapsed" -lt 30 ]
+}
+
+@test "content-detected globs route to auto" {
+  # Pins globs found by gen-filetypes' scan of Neovim's detection functions, which a Neovim change could break.
+  for name in report.w x.e x.bas x.csh .cshrc termcap xorg.conf x.y; do
+    printf 'x\n' > "$BATS_TEST_TMPDIR/$name"
+    route "$BATS_TEST_TMPDIR/$name"
+    [ "$output" = auto ] || { echo "$name: $output"; return 1; }
+  done
+}
+
+@test "auto globs leave bat's claims and filetypes.json's globs alone" {
+  printf 'module x\n' > "$BATS_TEST_TMPDIR/go.mod"
+  route "$BATS_TEST_TMPDIR/go.mod"
+  [ "$status" -eq 1 ]
+  printf '# x\n' > "$BATS_TEST_TMPDIR/notes.mkdn"
+  route "$BATS_TEST_TMPDIR/notes.mkdn"
+  [ "$output" = markdown ]
+}
+
+@test "auto files call nvcat with --filetype auto" {
+  run env NVCAT="$STUBS/nvcat-ok" BAT="$STUBS/bat" "$DISPATCH" "$FIXTURES/auto/report.w"
+  [ "$output" = "nvcat --all --paging=never --budget=2 --filetype auto -- $FIXTURES/auto/report.w" ]
+}
+
+@test "binary formats Neovim maps to a regex filetype go to bat" {
+  for name in x.mo x.bc x.pdb x.class; do
+    printf 'x\n' > "$BATS_TEST_TMPDIR/$name"
+    route "$BATS_TEST_TMPDIR/$name"
+    [ "$status" -eq 1 ] || { echo "$name: $output"; return 1; }
+  done
 }

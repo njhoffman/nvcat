@@ -50,6 +50,10 @@ class TimedOut(TooLarge):
   pass
 
 
+class Unsupported(TooLarge):
+  """--filetype auto: Neovim detected a filetype that nvcat has no table entry for, so bat renders the file."""
+
+
 class Cancelled(Exception):
   pass
 
@@ -388,8 +392,11 @@ class Renderer:
     self.budget_deadline = time.monotonic() + budget if all_rows and budget else None
     self.token += 1
     with self.timings.phase("open"):
-      self.request("nvim_exec_lua", "return nvcat.open(...)",
-                   [str(path), start_line, self.token, filetype, self.syntax])
+      opened = self.request("nvim_exec_lua", "return nvcat.open(...)",
+                            [str(path), start_line, self.token, filetype, self.syntax])
+    if isinstance(opened, dict) and "unsupported" in opened:
+      raise Unsupported(f"Neovim detected {opened['unsupported'] or 'no filetype'}, which nvcat does not "
+                        "render with --filetype auto")
     with self.timings.phase("frames: first"):
       info = self.wait_ready(self.token, width, height)
     resized = time.monotonic_ns()
@@ -524,9 +531,12 @@ def input_path(argument):
 
 
 def resolve_filetype(name, path):
-  """Return {"filetype", "lang"} for Neovim, or None to let Neovim detect the filetype.
+  """Return {"filetype", "lang"} for Neovim, or None to let Neovim detect the filetype, or for --filetype auto
+  {"accept": filetypes}: Neovim detects, and any other result goes to bat.
 
   A symbolic link is matched by its own name first, then by its target's."""
+  if name == filetypes.AUTO:
+    return {"accept": sorted(filetypes.accepted())}
   if name:
     entry = filetypes.find(name) or {"filetype": name}
   elif path is None:
@@ -535,7 +545,7 @@ def resolve_filetype(name, path):
     entry = filetypes.detect(path)
     if entry is None and Path(path).is_symlink():
       entry = filetypes.detect(Path(path).resolve())
-    if entry is None:
+    if entry is None or entry["filetype"] == filetypes.AUTO:
       return None
   return {"filetype": entry["filetype"], "lang": entry.get("lang", entry["filetype"])}
 
@@ -744,7 +754,8 @@ def main():
   parser.add_argument("file", type=Path, nargs="?",
                       help="File to render, or - for stdin; without one, stdin when it is not a terminal")
   parser.add_argument("--filetype", help="Neovim filetype; defaults to the filetypes.json match, then Neovim "
-                      "detection, then markdown (stdin: markdown)")
+                      "detection, then markdown (stdin: markdown). auto: Neovim detects, and a filetype "
+                      "outside nvcat's tables goes to bat (as for --fallback)")
   parser.add_argument("--columns", type=positive, help="Output width; defaults to fzf or terminal width")
   mode = parser.add_mutually_exclusive_group()
   mode.add_argument("--lines", type=positive, help="Emit one viewport with this many rows")
@@ -775,9 +786,9 @@ def main():
                       help="auto: Tree-sitter when the language has a highlights query, else Vim's regex syntax; "
                       "regex: always Vim's regex syntax (Markdown then skips render-markdown)")
   parser.add_argument("--filetypes", action="store_true",
-                      help="List the filetypes nvcat matches by file name, in match order, then exit: filetype, "
-                      "table (filetypes.json, or regex for the generated filetypes.regex.json) and globs, "
-                      "tab-separated")
+                      help="List the filetypes nvcat handles, then exit: filetype, table (filetypes.json, or "
+                      "regex for the generated filetypes.regex.json), globs, and the globs Neovim may detect as "
+                      "the filetype by content, tab-separated; filetypes with globs first, in match order")
   report = parser.add_mutually_exclusive_group()
   report.add_argument("--timings", dest="timings", action="store_const", const="table",
                       help="After rendering, print per-phase timings and peak memory to stderr")
@@ -800,19 +811,26 @@ def main():
 
 
 def list_filetypes():
-  """Print one line per filetype in match order; a filetype split over several entries is merged."""
+  """Print one line per filetype: those with globs of their own in match order (a filetype split over several
+  entries is merged), then those only Neovim's content detection gives, by name. The fourth column has the
+  globs Neovim detects by content ('auto' entries) that can give the filetype."""
   generated = {id(entry) for entry in filetypes.load(filetypes.GENERATED)}
-  rows = {}
+  rows, detected = {}, {}
   for entry in filetypes.ordered():
+    patterns = ([f"*.{extension}" for extension in entry.get("extensions", [])] + entry.get("names", [])
+                + entry.get("paths", []))
+    if entry["filetype"] == filetypes.AUTO:
+      for name in entry["detect"]:
+        detected.setdefault(name, []).extend(patterns)
+      continue
     table = "regex" if id(entry) in generated else "filetypes.json"
     globs = rows.setdefault(entry["filetype"], [table, []])[1]
-    for glob in ([f"*.{extension}" for extension in entry.get("extensions", [])] + entry.get("names", [])
-                 + entry.get("paths", [])):
-      if glob not in globs:
-        globs.append(glob)
+    globs.extend(glob for glob in patterns if glob not in globs)
+  for name in sorted(detected.keys() - rows.keys()):
+    rows[name] = ["regex", []]
   try:
     for filetype, (table, globs) in rows.items():
-      print(f"{filetype}\t{table}\t{' '.join(globs)}")
+      print(f"{filetype}\t{table}\t{' '.join(globs)}\t{' '.join(detected.get(filetype, []))}")
     sys.stdout.flush()
   except BrokenPipeError:
     os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
@@ -861,6 +879,7 @@ def run(args, timings):
     else:
       path = input_path(args.file)
     filetype = resolve_filetype(args.filetype, None if str(args.file) == "-" else args.file)
+    auto = filetype is not None and "accept" in filetype
     timings.since("input and filetype", start)
     viewport = None if all_rows else height
     if args.follow:
@@ -876,7 +895,9 @@ def run(args, timings):
       # The pager has no grid or row limits, and a followed log may grow past MAX_BYTES.
       restrict_writes(temporary)
       timings.facts["pager"] = "nvim (not timed)"
-      return page_nvim(settings["nvim"], paths, temporary, path, filetype, args.syntax, follow=True)
+      # A followed file is shown whatever Neovim detects: there is no bat to hand it to once the pager runs.
+      return page_nvim(settings["nvim"], paths, temporary, path, None if auto else filetype, args.syntax,
+                       follow=True)
     size = path.stat().st_size
     if size > MAX_BYTES:
       error = TooLarge(f"input is {size / 1048576:.1f} MiB, over the {MAX_BYTES // 1048576} MiB limit")
@@ -889,14 +910,15 @@ def run(args, timings):
       return emit(output, args, all_rows, pager, timings, temporary, fallback=True)
     if pager == "nvim" and wants_pager(args.paging, all_rows) and sys.stdout.isatty():
       restrict_writes(temporary)
-      if args.paging == "auto":
-        # Probe with one screen: a document that fits is printed as is, a taller one opens the pager.
+      if args.paging == "auto" or auto:
+        # Probe with one screen: a document that fits is printed as is, a taller one opens the pager. With
+        # --filetype auto the probe also checks Neovim's filetype before the pager, which cannot fall back.
         lines = shutil.get_terminal_size().lines
         renderer = None
         try:
           renderer = Renderer(settings["nvim"], paths, temporary, width, lines, args.timeout, timings, args.syntax)
           output, info = renderer.render(path, width, lines, 1, False, filetype)
-        except TimedOut as error:
+        except (TimedOut, Unsupported) as error:
           if renderer:
             renderer.close()
           output = fall_back(error, args, path, width, filetype, None, timings)
@@ -904,12 +926,13 @@ def run(args, timings):
         finally:
           if renderer:
             renderer.close()
-        if info["total_height"] <= lines:
+        if args.paging == "auto" and info["total_height"] <= lines:
           sys.stdout.buffer.write(output)
           sys.stdout.buffer.flush()
           return 0
       timings.facts["pager"] = "nvim (not timed)"
-      return page_nvim(settings["nvim"], paths, temporary, path, filetype, args.syntax)
+      # The probe accepted Neovim's filetype, and the pager's own detection reaches the same one.
+      return page_nvim(settings["nvim"], paths, temporary, path, None if auto else filetype, args.syntax)
     if all_rows:
       # Start near the final size: every full redraw costs rows x injected trees, and resizing a short grid to
       # fit adds one. Wrapping and virtual rows can still need a resize.
@@ -940,7 +963,8 @@ def fall_back(error, args, path, width, filetype, viewport, timings, start_line=
     raise error
   if not shutil.which("bat"):
     raise PreviewError(f"{error}; bat, the fallback renderer, is not installed")
-  print(f"nvcat: {error}; showing bat output instead (--fallback=none to fail)", file=sys.stderr)
+  if not isinstance(error, Unsupported):  # --filetype auto asked for bat in that case; no notice.
+    print(f"nvcat: {error}; showing bat output instead (--fallback=none to fail)", file=sys.stderr)
   with timings.phase("bat fallback"):
     try:
       output = fallback_bat(path, width, (filetype or {}).get("filetype"), start_line, viewport)

@@ -158,16 +158,16 @@ Reviewed: 2026-10-31
   regenerates the generated regex-filetypes table and carries the collision overrides (`NOT_COVERED`); the
   two pool sections ("treesitter filetypes not in bat", "regex syntax filetypes not in bat") are still
   hand-made. Extend gen-filetypes to write them too.
-- [ ] **Content-detected regex filetypes are not routed.** (p3) [feature] About 45 regex-syntax filetypes
+- [x] **Content-detected regex filetypes are not routed.** (p3) [feature] About 45 regex-syntax filetypes
   bat lacks reach Neovim only through detection functions (`.w` cweb/progress, `.e` eiffel/specman, `.bas`,
   `.csh`, `.def`, `*.inc`, ...), so `gen-filetypes` skips them. Option: generated entries with a `detect`
   flag that dispatch hands to nvcat without `--filetype`, letting Neovim choose by content (needs a "no
   filetype found -> bat" path instead of the Markdown default).
-- [ ] **nvcat without --filetype ignores bat's claims.** (p3) [bug] `nvcat go.sum` renders as the generated
+- [x] **nvcat without --filetype ignores bat's claims.** (p3) [bug] `nvcat go.sum` renders as the generated
   `hercules` (and `nvcat nginx.conf` as `conf`) while `nvcat-dispatch` sends both to bat; `filetypes.detect`
   does not know bat's patterns. Have gen-dispatch emit the claimed globs into a JSON file nvcat checks, or
   document nvcat-dispatch as the bat-aware entry point.
-- [ ] **Generated globs can hit binary formats.** (p3) [chore] Neovim maps `*.mo` (gettext catalogs), `*.bc`
+- [x] **Generated globs can hit binary formats.** (p3) [chore] Neovim maps `*.mo` (gettext catalogs), `*.bc`
   (LLVM bitcode) and `*.pdb` statically; the NUL check sends these to bat, but costs an nvcat start first.
   Consider a SKIP list in gen-filetypes for known binary extensions.
 - [x] (p3) [feature] Evaluate whether Neovim-specific source rendering adds value beyond the current bat integration.

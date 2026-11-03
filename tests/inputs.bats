@@ -164,24 +164,57 @@ detected() {
   run --separate-stderr "$NVCAT" --filetypes
   [ "$status" -eq 0 ]
   [ -z "$stderr" ]
-  [ "${lines[0]}" = $'markdown\tfiletypes.json\t*.md *.markdown *.mdown *.mdwn *.mkd *.mkdn' ]
-  [[ ${lines[-1]} == $'conf\tfiletypes.json\t'* ]]
-  [[ $output == *$'\njust\tfiletypes.json\t*.just justfile .justfile\n'* ]]
-  [[ $output == *$'\nsed\tregex\t*.sed\n'* ]]
+  [ "${lines[0]}" = $'markdown\tfiletypes.json\t*.md *.markdown *.mdown *.mdwn *.mkd *.mkdn\t' ]
+  [[ $output == *$'\nconf\tfiletypes.json\t*.conf '*$'\t*.rules\n'* ]]
+  [[ $output == *$'\njust\tfiletypes.json\t*.just justfile .justfile\t\n'* ]]
+  [[ $output == *$'\nsed\tregex\t*.sed\t\n'* ]]
+  # Filetypes only content detection gives come last, with no globs of their own.
+  [[ $output == *$'\ncweb\tregex\t\t*.w\n'* ]]
+  [[ $output == *$'\nprogress\tregex\t\t*.w *.i\n'* ]]
+  [ "$(grep -n $'^cweb\t' <<<"$output" | cut -d: -f1)" -gt "$(grep -n $'^conf\t' <<<"$output" | cut -d: -f1)" ]
   # One line per filetype: nanorc's names and extensions are separate entries in the table.
   [ "$(grep -c $'^nanorc\t' <<<"$output")" -eq 1 ]
   [[ $(grep $'^nanorc\t' <<<"$output") == *'*/etc/nanorc'*'*.nanorc'* ]]
+  [ "$(grep -c $'^auto\t' <<<"$output")" -eq 0 ]
   expected=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import filetypes
-print(len({entry["filetype"] for entry in filetypes.ordered()}))' "$ROOT")
+print(len(filetypes.accepted() - {"markdown"} | {"markdown"}))' "$ROOT")
   [ "${#lines[@]}" -eq "$expected" ]
-  while IFS=$'\t' read -r filetype table globs; do
-    [ -n "$filetype" ] && [ -n "$globs" ] || { echo "bad line: $filetype"; return 1; }
+  while IFS=$'\t' read -r filetype table globs detected; do
+    [ -n "$filetype" ] && [ -n "$globs$detected" ] || { echo "bad line: $filetype"; return 1; }
     [[ $table == filetypes.json || $table == regex ]] || { echo "bad table: $table"; return 1; }
   done <<<"$output"
+}
+
+@test "--filetype auto renders the filetype Neovim detects by content" {
+  run detected --filetype auto "$FIXTURES/auto/report.w"
+  [ "$output" = "progress syntax" ]
+  run detected --filetype auto "$FIXTURES/auto/.cshrc"
+  [ "$output" = "csh syntax" ]
+}
+
+@test "--filetype auto hands a filetype outside nvcat's tables to bat without a notice" {
+  run --separate-stderr "$NVCAT" --paging=never --columns 60 --all --filetype auto "$FIXTURES/auto/shape.idl"
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+  [ "$output" = "$(bat --color=always --paging=never --style=plain --terminal-width=60 -- "$FIXTURES/auto/shape.idl")" ]
+  run --separate-stderr "$NVCAT" --paging=never --columns 60 --all --filetype auto --fallback=none "$FIXTURES/auto/shape.idl"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"Neovim detected idl, which nvcat does not render with --filetype auto"* ]]
+}
+
+@test "without --filetype, content-detected files render with whatever Neovim detects" {
+  run detected "$FIXTURES/auto/shape.idl"
+  [[ $output == "idl "* ]]
+}
+
+@test "files bat claims use Neovim's detection, not a generated glob" {
+  printf 'golang.org/x/text v0.3.0 h1:abc=\n' > "$BATS_TEST_TMPDIR/go.sum"
+  run detected "$BATS_TEST_TMPDIR/go.sum"
+  [[ $output == "gosum "* ]]
 }
 
 @test "--filetypes survives a closed pipe" {
   run bash -c '"$1" --filetypes | head -1' _ "$NVCAT"
   [ "$status" -eq 0 ]
-  [ "$output" = $'markdown\tfiletypes.json\t*.md *.markdown *.mdown *.mdwn *.mkd *.mkdn' ]
+  [ "$output" = $'markdown\tfiletypes.json\t*.md *.markdown *.mdown *.mdwn *.mkd *.mkdn\t' ]
 }

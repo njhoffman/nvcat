@@ -6,6 +6,31 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-03
+
+### Added
+
+- `--filetype auto`: Neovim detects the filetype by content, and nvcat renders the file only when the result
+  is one of its filetypes; anything else goes to bat without a notice (an error with `--fallback=none`).
+- 75 globs Neovim assigns by content (`*.w` cweb or Progress, `*.e` Eiffel or Specman, `*.bas`, `*.csh`,
+  `.cshrc`, `termcap`, `xorg.conf`, `*.y`, ...) now route to nvcat: `./gen-filetypes` scans Neovim's detection
+  functions and writes them as `auto` entries, and `nvcat-dispatch --print` prints `auto` for them, so
+  `bat-dynamic` and fzf previews pass `--filetype auto`. SYNTAX.md lists them with their possible filetypes.
+- `nvcat --filetypes` has a fourth column, the content-detected globs that can give each filetype, and lists
+  filetypes only content detection gives (such as `cweb`) after the others.
+
+### Changed
+
+- `./gen-dispatch` also writes `filetypes.bat.json`, bat's names and globs that a table entry would
+  otherwise take.
+- `./gen-filetypes` skips binary formats Neovim maps to a regex syntax (`*.mo`, `*.bc`, `*.pdb`, `*.class`),
+  which leaves bat to show them.
+
+### Fixed
+
+- `nvcat FILE` without `--filetype` no longer applies a generated glob to a file bat claims: `go.sum` is
+  Neovim's `gosum`, not `hercules`, and `go.mod` is no longer taken by the new `*.mod` glob.
+
 ## [0.11.0] - 2026-11-02
 
 ### Added

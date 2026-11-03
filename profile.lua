@@ -306,14 +306,23 @@ local function highlight(filetype, lang, syntax)
 end
 
 -- Edit path and highlight it. spec: {filetype, lang} from nvcat, or nil to use Neovim's detection with a
--- Markdown fallback. syntax: "auto" (default) or "regex"; regex Markdown skips render-markdown.
+-- Markdown fallback, or {accept} (--filetype auto) to use Neovim's detection only for a filetype in accept.
+-- syntax: "auto" (default) or "regex"; regex Markdown skips render-markdown.
+-- Returns the detected filetype ("" for none) when accept rules it out, before any highlighting.
 local function load(path, spec, syntax)
   M.syntax = syntax
   local start = hrtime()
   vim.api.nvim_cmd({ cmd = "edit", args = { path }, magic = { file = false, bar = false }, mods = { silent = true } }, {})
   start = lap("open: edit", start)
-  if spec == nil or spec == vim.NIL then
+  if spec == vim.NIL then
+    spec = nil
+  end
+  if spec == nil or spec.accept then
     local detected = vim.filetype.match({ buf = 0, filename = path })
+    if spec and not vim.list_contains(spec.accept, detected) then
+      lap("open: filetype detection", start)
+      return detected or ""
+    end
     spec = { filetype = detected or "markdown", lang = vim.treesitter.language.get_lang(detected or "markdown") }
     lap("open: filetype detection", start)
   end
@@ -339,7 +348,10 @@ end
 function M.open(path, line, token, spec, syntax)
   M.token = token
   vim.v.errmsg = ""
-  load(path, spec, syntax)
+  local unsupported = load(path, spec, syntax)
+  if unsupported then
+    return { unsupported = unsupported }
+  end
   local last = vim.api.nvim_buf_line_count(0)
   assert(line <= last, "Requested line exceeds document length (" .. last .. ")")
   vim.api.nvim_win_set_cursor(0, { line, 0 })
