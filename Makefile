@@ -5,7 +5,7 @@ BINDIR ?= $(PREFIX)/bin
 COMMANDS := nvcat nvcat-dispatch
 PYTHON := /usr/bin/python3
 
-.PHONY: help install uninstall check check-dev deps test bench bench-filetypes dispatch
+.PHONY: help install uninstall check check-dev deps test bench bench-filetypes dispatch filetypes
 
 help:
 	@echo "make install     link $(COMMANDS) into $(BINDIR) (PREFIX=$(PREFIX))"
@@ -16,7 +16,8 @@ help:
 	@echo "make test        run the bats test suite"
 	@echo "make bench       run benchmarks/run (records history, updates SYNTAX.md)"
 	@echo "make bench-filetypes  run benchmarks/filetypes (records the baseline, updates docs/PERFORMANCE.md)"
-	@echo "make dispatch    regenerate nvcat-dispatch from filetypes.json and bat"
+	@echo "make dispatch    regenerate nvcat-dispatch from filetypes.json, filetypes.regex.json and bat"
+	@echo "make filetypes   regenerate filetypes.regex.json and its SYNTAX.md table, then nvcat-dispatch"
 
 # Links, not copies: nvcat finds profile.lua, readonly.py and queries/ next to its real path.
 install: check
@@ -66,4 +67,8 @@ bench-filetypes:
 	benchmarks/filetypes
 
 dispatch:
+	./gen-dispatch
+
+filetypes:
+	./gen-filetypes
 	./gen-dispatch

@@ -1,0 +1,236 @@
+#!/usr/bin/python3
+"""Generate filetypes.regex.json, the Neovim regex-syntax filetypes bat has no syntax for, and its SYNTAX.md table.
+
+A filetype qualifies when nvcat's own Neovim (isolated, with nvcat's runtimepath) has a syntax/FILETYPE.vim
+for it, no Tree-sitter highlights query for its language, no entry in filetypes.json, and no bat coverage:
+bat has no syntax by that name, and none of bat's file names or extensions is detected by Neovim as that
+filetype. Its globs come from Neovim's filetype registry: extensions and file names, plus the Lua patterns
+that translate to a glob; patterns with a negative priority (Neovim's catch-alls) and detection functions are
+skipped. Globs that bat claims are dropped, so bat keeps them. Run ./gen-dispatch afterwards."""
+
+import argparse
+from fnmatch import fnmatchcase
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+import config
+import filetypes
+
+ROOT = Path(__file__).resolve().parent
+SYNTAX_MD = ROOT / "SYNTAX.md"
+START, END = "<!-- regex-filetypes:start -->", "<!-- regex-filetypes:end -->"
+
+# Hand-reviewed false matches: a bat extension that Neovim maps to this filetype, but bat's syntax is for a
+# different language (see "Neovim regex syntax filetypes not in bat" in SYNTAX.md). bat keeps the shared
+# globs; the filetype's other globs still go to nvcat. The second line comes from bat's compound names:
+# go.sum (.sum: hercules), Makefile.am (.am: elf), extension-release.* (.x: rpcgen), and from bat extensions of
+# other languages: .pac (PAC proxy JavaScript), .gs, .cm, .task.
+NOT_COVERED = {"atlas", "cobol", "progress", "lex", "lifelines", "inform", "pov", "tads", "st", "conf",
+               "elf", "hercules", "rpcgen", "plm", "grads", "voscm", "taskedit"}
+
+# Globs too generic to claim for a regex syntax: Neovim reaches these only through content checks.
+SKIP_GLOBS = {"*.txt", "*.text", "*.log", "*.bak", "*.in", "*.dat", "*.def", "*.inc", "*.cfg", "*.src"}
+
+INVENTORY = r"""
+local s = vim.json.decode(vim.env.NVCAT_SESSION)
+nvcat.setup(nil, s.paths)
+local out = { syntax = {}, covered = {}, registry = {} }
+for _, file in ipairs(vim.api.nvim_get_runtime_file("syntax/*.vim", true)) do
+  local ft = vim.fn.fnamemodify(file, ":t:r")
+  if out.syntax[ft] == nil then
+    local lang = vim.treesitter.language.get_lang(ft) or ft
+    local ok, loaded = pcall(vim.treesitter.language.add, lang)
+    local highlights = ok and loaded == true and #vim.treesitter.query.get_files(lang, "highlights") > 0
+    out.syntax[ft] = { file = file, treesitter = highlights and lang or vim.NIL }
+  end
+end
+for _, sample in ipairs(s.samples) do
+  local ok, ft = pcall(vim.filetype.match, { filename = sample })
+  if ok and type(ft) == "string" then
+    out.covered[ft] = true
+  end
+end
+local function add(kind, key, value)
+  local ft, priority = value, 0
+  if type(value) == "table" then
+    ft, priority = value[1], (value[2] or {}).priority or 0
+  end
+  if type(ft) == "string" then
+    table.insert(out.registry, { kind = kind, key = key, filetype = ft, priority = priority })
+  end
+end
+local registry = vim.filetype.inspect()
+for key, value in pairs(registry.extension) do add("extension", key, value) end
+for key, value in pairs(registry.filename) do add("filename", key, value) end
+for _, group in pairs(registry.pattern) do
+  for key, value in pairs(group) do add("pattern", key, value) end
+end
+io.stdout:write(vim.json.encode(out))
+"""
+
+
+def nvcat_module():
+  loader = importlib.machinery.SourceFileLoader("nvcat_script", str(ROOT / "nvcat"))
+  spec = importlib.util.spec_from_loader(loader.name, loader)
+  module = importlib.util.module_from_spec(spec)
+  loader.exec_module(module)
+  return module
+
+
+def inventory(samples):
+  """Syntax files, bat-covered filetypes, and the filetype registry, from nvcat's isolated Neovim."""
+  nvcat = nvcat_module()
+  settings = config.load()[0]
+  paths = nvcat.find_paths(settings)
+  with tempfile.TemporaryDirectory(prefix="nvcat-", dir="/tmp") as temporary:
+    script = Path(temporary) / "inventory.lua"
+    script.write_text(INVENTORY)
+    env = nvcat.isolated_environment(temporary)
+    env["NVCAT_SESSION"] = json.dumps({"paths": paths, "samples": samples})
+    command = nvcat.nvim_command(settings["nvim"], "--headless", "-c", f"luafile {script}", "-c", "qa!")
+    result = subprocess.run(command, cwd=temporary, env=env, capture_output=True, text=True, timeout=120)
+  try:
+    return json.loads(result.stdout), subprocess.run([settings["nvim"], "--version"], capture_output=True,
+                                                     text=True).stdout.split("\n", 1)[0]
+  except ValueError:
+    raise SystemExit(f"gen-filetypes: Neovim failed: {result.stderr.strip() or result.returncode}") from None
+
+
+def lua_glob(pattern):
+  """A glob for a Lua filetype pattern built only from literals, escapes, .* and anchors; else None.
+
+  Returns (kind, glob) where kind is 'names' for basename patterns and 'paths' for patterns with a '/'."""
+  anchored_start = pattern.startswith("^")
+  body = pattern[1:] if anchored_start else pattern
+  anchored_end = body.endswith("$") and not body.endswith("%$")
+  body = body[:-1] if anchored_end else body
+  glob, index = "", 0
+  while index < len(body):
+    character = body[index]
+    if character == "%":
+      escaped = body[index + 1:index + 2]
+      if not escaped or escaped.isalnum() or escaped in "*?[":
+        return None
+      glob += escaped
+      index += 2
+    elif body.startswith(".*", index):
+      glob += "*"
+      index += 2
+    elif character in ".[]()+-?*^$":
+      return None
+    else:
+      glob += character
+      index += 1
+  if len(glob.replace("*", "").replace("/", "")) < 3:
+    return None
+  if "/" in glob:
+    if not anchored_start:
+      glob = "*" + glob if glob.startswith("/") else "*/" + glob
+    return "paths", glob if anchored_end else glob + "*"
+  return "names", ("" if anchored_start else "*") + glob + ("" if anchored_end else "*")
+
+
+def build(data, bat_names, bat_globs):
+  """Return (entries, rows): entries in match order, rows for SYNTAX.md sorted by filetype."""
+  curated = {entry["filetype"] for entry in filetypes.load()}
+  covered = set(data["covered"]) | {name.lower() for name in bat_names}
+  candidates = {filetype for filetype, info in data["syntax"].items()
+                if not info["treesitter"] and filetype not in curated
+                and (filetype not in covered or filetype in NOT_COVERED)}
+  found = {}
+  for item in sorted(data["registry"], key=lambda item: (item["kind"], item["key"])):
+    filetype = item["filetype"]
+    if filetype not in candidates or item["priority"] < 0:
+      continue
+    if item["kind"] == "extension":
+      kind, glob = "extensions", item["key"].lower()
+    elif item["kind"] == "filename":
+      kind, glob = ("paths", item["key"]) if "/" in item["key"] else ("names", item["key"])
+    else:
+      converted = lua_glob(item["key"])
+      if converted is None:
+        continue
+      kind, glob = converted
+    case_glob = filetypes.globs({kind: [glob]})[0].lower()
+    if case_glob in SKIP_GLOBS or any(fnmatchcase(filetypes.sample(case_glob).lower(), claimed.lower())
+                                      for claimed in bat_globs):
+      continue
+    globs = found.setdefault(filetype, {"extensions": [], "names": [], "paths": []})
+    if glob.lower() not in [existing.lower() for existing in globs[kind]]:
+      globs[kind].append(glob)
+  # Neovim checks file names and patterns before extensions, so specific entries come first: a filetype's
+  # names/paths entry precedes every extension entry (e.g. /etc/a2ps.cfg before another filetype's *.cfg).
+  specific, extensions, rows = [], [], []
+  for filetype in sorted(found):
+    globs = found[filetype]
+    if globs["names"] or globs["paths"]:
+      specific.append({"filetype": filetype, **{key: globs[key] for key in ("names", "paths") if globs[key]}})
+    if globs["extensions"]:
+      extensions.append({"filetype": filetype, "extensions": globs["extensions"]})
+    source = data["syntax"][filetype]["file"]
+    rows.append((filetype, filetypes.globs(globs), "" if "/runtime/syntax/" in source else source))
+  return specific + extensions, rows
+
+
+def table(rows, nvim_version, bat_version):
+  def shown(patterns):
+    patterns = [pattern[2:] if pattern.startswith("*/") and "/" not in pattern[2:] else pattern
+                for pattern in patterns]
+    unique = list(dict.fromkeys(patterns))
+    return ", ".join(f"`{pattern}`" for pattern in unique[:6]) + (f", {len(unique) - 6} more"
+                                                                  if len(unique) > 6 else "")
+  lines = [
+    START,
+    "",
+    f"Generated by `./gen-filetypes` against Neovim `{nvim_version.split()[-1]}` and bat {bat_version}: "
+    f"{len(rows)} filetypes. Source is empty for Neovim's own runtime files.",
+    "",
+    "| Filetype | Matches | Source |",
+    "|---|---|---|",
+  ]
+  for filetype, patterns, source in rows:
+    lines.append(f"| `{filetype}` | {shown(patterns)} | {f'`{source}`' if source else ''} |")
+  return "\n".join(lines + ["", END])
+
+
+def main():
+  parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+  parser.add_argument("--output", default=str(filetypes.GENERATED), help="JSON file to write, or - for stdout")
+  parser.add_argument("--no-docs", action="store_true", help="Leave SYNTAX.md alone")
+  args = parser.parse_args()
+  bat_version, patterns = filetypes.bat_patterns()
+  bat_globs = sorted({glob for _, glob in patterns})
+  bat_names = sorted({syntax for syntax, _ in patterns})
+  samples = sorted({filetypes.sample(glob) for glob in bat_globs})
+  data, nvim_version = inventory(samples)
+  entries, rows = build(data, bat_names, bat_globs)
+  document = {
+    "description": "Generated by ./gen-filetypes; do not edit. Neovim regex-syntax filetypes that bat has no "
+                   "syntax for, checked after filetypes.json (before its 'last' entries). Same keys as "
+                   "filetypes.json.",
+    "filetypes": entries,
+  }
+  text = ("{\n  \"description\": " + json.dumps(document["description"]) + ",\n  \"filetypes\": [\n"
+          + ",\n".join("    " + json.dumps(entry, ensure_ascii=False) for entry in entries) + "\n  ]\n}\n")
+  if args.output == "-":
+    sys.stdout.write(text)
+  else:
+    Path(args.output).write_text(text)
+    print(f"Wrote {args.output} ({len(rows)} filetypes, {len(entries)} entries)", file=sys.stderr)
+  if not args.no_docs:
+    document = SYNTAX_MD.read_text()
+    if START not in document:
+      raise SystemExit(f"gen-filetypes: no {START} block in SYNTAX.md")
+    before, rest = document.split(START, 1)
+    after = rest.split(END, 1)[1]
+    SYNTAX_MD.write_text(before + table(rows, nvim_version, bat_version) + after)
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent
 # requested grid. Renderer.wait_ready() names the row limit if a Neovim with a lower cap times out on it.
 MAX_ROWS = 1000
 MAX_BYTES = 10 * 1024 * 1024
+BINARY_PROBE = 8192  # Bytes checked for a NUL, as git and grep do, to treat the input as binary.
 VERSION_FILE = ROOT / "VERSION"
 
 
@@ -42,7 +43,7 @@ class PreviewError(Exception):
 
 
 class TooLarge(PreviewError):
-  """A limit was reached (input size, rows, --budget, --timeout); a fallback renderer can take over."""
+  """A limit was reached (input size, binary input, rows, --budget, --timeout); a fallback renderer can take over."""
 
 
 class TimedOut(TooLarge):
@@ -773,12 +774,18 @@ def main():
   parser.add_argument("--syntax", choices=["auto", "regex"], default="auto",
                       help="auto: Tree-sitter when the language has a highlights query, else Vim's regex syntax; "
                       "regex: always Vim's regex syntax (Markdown then skips render-markdown)")
+  parser.add_argument("--filetypes", action="store_true",
+                      help="List the filetypes nvcat matches by file name, in match order, then exit: filetype, "
+                      "table (filetypes.json, or regex for the generated filetypes.regex.json) and globs, "
+                      "tab-separated")
   report = parser.add_mutually_exclusive_group()
   report.add_argument("--timings", dest="timings", action="store_const", const="table",
                       help="After rendering, print per-phase timings and peak memory to stderr")
   report.add_argument("--timings-json", dest="timings", action="store_const", const="json",
                       help="Like --timings, as one JSON object")
   args = parser.parse_args()
+  if args.filetypes:
+    return list_filetypes()
   if args.file is None and not args.check:
     if sys.stdin.isatty():
       parser.error("a file is required (or pipe the input into nvcat)")
@@ -790,6 +797,26 @@ def main():
   finally:
     if args.timings:
       emit_timings(args.timings, timings)
+
+
+def list_filetypes():
+  """Print one line per filetype in match order; a filetype split over several entries is merged."""
+  generated = {id(entry) for entry in filetypes.load(filetypes.GENERATED)}
+  rows = {}
+  for entry in filetypes.ordered():
+    table = "regex" if id(entry) in generated else "filetypes.json"
+    globs = rows.setdefault(entry["filetype"], [table, []])[1]
+    for glob in ([f"*.{extension}" for extension in entry.get("extensions", [])] + entry.get("names", [])
+                 + entry.get("paths", [])):
+      if glob not in globs:
+        globs.append(glob)
+  try:
+    for filetype, (table, globs) in rows.items():
+      print(f"{filetype}\t{table}\t{' '.join(globs)}")
+    sys.stdout.flush()
+  except BrokenPipeError:
+    os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+  return 0
 
 
 def emit_timings(form, timings):
@@ -854,6 +881,11 @@ def run(args, timings):
     if size > MAX_BYTES:
       error = TooLarge(f"input is {size / 1048576:.1f} MiB, over the {MAX_BYTES // 1048576} MiB limit")
       output = fall_back(error, args, path, width, filetype, viewport, timings)
+      return emit(output, args, all_rows, pager, timings, temporary, fallback=True)
+    with open(path, "rb") as handle:
+      binary = b"\0" in handle.read(BINARY_PROBE)
+    if binary:  # Neovim would show the raw control bytes; bat prints a notice instead.
+      output = fall_back(TooLarge("binary input"), args, path, width, filetype, viewport, timings)
       return emit(output, args, all_rows, pager, timings, temporary, fallback=True)
     if pager == "nvim" and wants_pager(args.paging, all_rows) and sys.stdout.isatty():
       restrict_writes(temporary)

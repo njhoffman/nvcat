@@ -203,3 +203,24 @@ big_markdown() {
   [[ $output == *'the bat fallback failed with exit status 3' ]]
   [[ $output != *Traceback* ]]
 }
+
+@test "binary input falls back to bat instead of showing raw control bytes" {
+  printf 'GDMO\0\1\2\3binary\n' > "$BATS_TEST_TMPDIR/catalog.mo"
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --all --filetype gdmo -- "$BATS_TEST_TMPDIR/catalog.mo"
+  [ "$status" -eq 0 ]
+  [[ $stderr == *'binary input; showing bat output instead'* ]]
+  [[ $output != *$'\e[0;'* ]]
+}
+
+@test "--fallback=none rejects binary input" {
+  printf 'x\0y\n' > "$BATS_TEST_TMPDIR/blob.sed"
+  run --separate-stderr "$NVCAT" --paging=never --fallback=none --all -- "$BATS_TEST_TMPDIR/blob.sed"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *'binary input'* ]]
+}
+
+@test "a NUL after the first 8 KiB does not count as binary" {
+  { head -c 9000 /dev/zero | tr '\0' 'a'; printf '\n\0\n'; } > "$BATS_TEST_TMPDIR/late.sed"
+  run --separate-stderr "$NVCAT" --paging=never --fallback=none --columns 80 --lines 3 -- "$BATS_TEST_TMPDIR/late.sed"
+  [ "$status" -eq 0 ]
+}

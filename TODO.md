@@ -53,6 +53,12 @@ Reviewed: 2026-10-31
   `$1 == --print` and accepts no `--`; have it skip a leading `--` and document `nvcat-dispatch -- {}`.
 - [x] (p2) [docs] Clarify full-document versus viewport behavior and how scrolling interacts with each mode.
 - [x] (p2) [feature] Define readable fallbacks for input, row, and timeout limits.
+- [x] **`cat` sends only Markdown to nvcat.** (p2) [bug] The `cat` alias runs `~/.shell/scripts/bat-dynamic`,
+  which hard-codes `*.md | *.markdown | *.mdown | *.mkd` and never consults `nvcat-dispatch`, so
+  `cat justfile` (and every other filetypes.json entry, plus `.mdwn`/`.mkdn`) goes to bat as plain text even
+  though `nvcat-dispatch --print justfile` answers `just`. Fix in bat-dynamic (dotbare): ask
+  `nvcat-dispatch --print "$1"` and exec `nvcat --all --filetype "$ft"` on a match. Done in bat-dynamic
+  (~/.shell, uncommitted).
 
 ## Replacing nvimpager
 
@@ -148,9 +154,22 @@ Reviewed: 2026-10-31
 ## Optional support for other filetypes
 
 - [ ] **SYNTAX.md has no regeneration script.** (p3) [chore] The Neovim-vs-bat comparison in `SYNTAX.md`
-  was produced by an ad hoc Lua/Python scan plus hand review of extension collisions. Check in a script
-  (e.g. `scripts/syntax-coverage`) with the collision overrides so the list can be refreshed when parsers
-  or bat change.
+  was produced by an ad hoc Lua/Python scan plus hand review of extension collisions. `./gen-filetypes` now
+  regenerates the generated regex-filetypes table and carries the collision overrides (`NOT_COVERED`); the
+  two pool sections ("treesitter filetypes not in bat", "regex syntax filetypes not in bat") are still
+  hand-made. Extend gen-filetypes to write them too.
+- [ ] **Content-detected regex filetypes are not routed.** (p3) [feature] About 45 regex-syntax filetypes
+  bat lacks reach Neovim only through detection functions (`.w` cweb/progress, `.e` eiffel/specman, `.bas`,
+  `.csh`, `.def`, `*.inc`, ...), so `gen-filetypes` skips them. Option: generated entries with a `detect`
+  flag that dispatch hands to nvcat without `--filetype`, letting Neovim choose by content (needs a "no
+  filetype found -> bat" path instead of the Markdown default).
+- [ ] **nvcat without --filetype ignores bat's claims.** (p3) [bug] `nvcat go.sum` renders as the generated
+  `hercules` (and `nvcat nginx.conf` as `conf`) while `nvcat-dispatch` sends both to bat; `filetypes.detect`
+  does not know bat's patterns. Have gen-dispatch emit the claimed globs into a JSON file nvcat checks, or
+  document nvcat-dispatch as the bat-aware entry point.
+- [ ] **Generated globs can hit binary formats.** (p3) [chore] Neovim maps `*.mo` (gettext catalogs), `*.bc`
+  (LLVM bitcode) and `*.pdb` statically; the NUL check sends these to bat, but costs an nvcat start first.
+  Consider a SKIP list in gen-filetypes for known binary extensions.
 - [x] (p3) [feature] Evaluate whether Neovim-specific source rendering adds value beyond the current bat integration.
 - [x] (p3) [feature] If needed, add filetype detection or `--filetype`, on-demand parsers, and a general render-ready signal.
 - [ ] (p3) [perf] Compare startup, parsing time, and memory against the Markdown-only profile before enabling broader support.

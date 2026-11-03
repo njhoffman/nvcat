@@ -150,3 +150,60 @@ entry = filetypes.detect(sys.argv[2]); print(entry["filetype"] if entry else "")
   echo "average ${elapsed}ms"
   [ "$elapsed" -lt 20 ]
 }
+
+@test "filetypes.regex.json is current with Neovim and bat" {
+  run diff <("$ROOT/gen-filetypes" --no-docs --output - 2>/dev/null) "$ROOT/filetypes.regex.json"
+  [ "$status" -eq 0 ]
+}
+
+@test "generated filetypes come after filetypes.json and before its last entries" {
+  route "$FIXTURES/sysctl/etc/sysctl.d/10-net.conf"
+  [ "$output" = sysctl ]
+  route "$FIXTURES/conf/app.conf"
+  [ "$output" = conf ]
+  cp "$FIXTURES/sed/strip.sed" "$BATS_TEST_TMPDIR/STRIP.SED"
+  route "$BATS_TEST_TMPDIR/STRIP.SED"
+  [ "$output" = sed ]
+}
+
+@test "generated file names and paths win over generated extensions" {
+  mkdir -p "$BATS_TEST_TMPDIR/etc"
+  printf 'x\n' > "$BATS_TEST_TMPDIR/etc/slp.spi"
+  printf 'x\n' > "$BATS_TEST_TMPDIR/page.spi"
+  route "$BATS_TEST_TMPDIR/etc/slp.spi"
+  [ "$output" = slpspi ]
+  route "$BATS_TEST_TMPDIR/page.spi"
+  [ "$output" = spyce ]
+}
+
+@test "bat keeps the globs it claims even when Neovim maps them to a generated filetype" {
+  printf 'module x\n' > "$BATS_TEST_TMPDIR/go.sum"
+  route "$BATS_TEST_TMPDIR/go.sum"
+  [ "$status" -eq 1 ]
+}
+
+@test "filetypes.py's indexed detect agrees with fnmatch on every glob" {
+  run python3 -c '
+import sys; sys.path.insert(0, sys.argv[1]); import filetypes
+from fnmatch import fnmatchcase
+entries = filetypes.ordered()
+def slow(path):
+  folded = path.lower()
+  for entry in entries:
+    if any(fnmatchcase(folded, glob.lower()) for glob in filetypes.globs(entry)) and filetypes.requirement_met(entry, path):
+      return entry
+paths = [filetypes.sample(glob) for entry in entries for glob in filetypes.globs(entry)]
+paths += ["/a/plain.txt", "/a/b.swift.gyb", "/a/Makefile", "/a/.config/kitty/x.conf", "/a/y.conf"]
+bad = [path for path in paths if filetypes.detect(path) is not slow(path)]
+print(len(paths), bad[:5])
+sys.exit(1 if bad else 0)' "$ROOT"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "routing a file nvcat does not handle stays fast" {
+  start=$(date +%s%N)
+  for _ in 1 2 3 4 5 6 7 8 9 10; do "$DISPATCH" --print "$FIXTURES/bat/script.py" >/dev/null || true; done
+  elapsed=$(( ($(date +%s%N) - start) / 10000000 ))
+  echo "average ${elapsed}ms"
+  [ "$elapsed" -lt 30 ]
+}

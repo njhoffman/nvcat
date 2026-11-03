@@ -84,10 +84,14 @@ helm template . | ./nvcat -c --filetype yaml
 ./nvcat --paging=always README.md
 ./nvcat --syntax regex config.kdl   # Vim's regex syntax instead of Tree-sitter
 ./nvcat --timings README.md         # per-phase timings and peak memory on stderr
+./nvcat --filetypes                 # filetype, table and globs of every filetype matched by name
 ```
 
-Without `--filetype`, the file's name is matched against [filetypes.json](filetypes.json) (case-insensitively,
-so `README.MD` is Markdown), then Neovim's own detection is used, then Markdown. A symbolic link is matched by
+Without `--filetype`, the file's name is matched against [filetypes.json](filetypes.json), then the generated
+[filetypes.regex.json](filetypes.regex.json) (Neovim's regex-syntax filetypes that bat has no syntax for),
+then the `last` entries of filetypes.json (case-insensitively, so `README.MD` is Markdown); then Neovim's own
+detection is used, then Markdown. Input with a NUL byte in its first 8 KiB is binary and goes to the bat
+fallback. A symbolic link is matched by
 its own name first and by its target's name when its own matches nothing. stdin is Markdown unless
 `--filetype` is given.
 
@@ -241,9 +245,11 @@ fzf --preview 'nvcat-dispatch {}' --preview-window 'right:75%:nowrap' --bind 're
 nvcat-dispatch --print path/to/file   # print the filetype; exit 1 when bat would handle it
 ```
 
-The script is a generated bash `case` (a few milliseconds, no Neovim or Python start-up). Regenerate it with
-`./gen-dispatch` after editing [filetypes.json](filetypes.json) or changing bat's syntaxes or `--map-syntax`
-config; `tests/dispatch.bats` fails while it is stale. Link it onto PATH like `nvcat`. See
+The script is a generated bash `case` (a few milliseconds, no Neovim or Python start-up); the generated
+filetypes sit in a second stage that bash only parses for files the first stage does not match. Regenerate it
+with `./gen-dispatch` after editing [filetypes.json](filetypes.json) or changing bat's syntaxes or
+`--map-syntax` config, and run `./gen-filetypes` first when Neovim, its syntax files or parsers, or bat
+change (`make filetypes` runs both); `tests/dispatch.bats` fails while either is stale. Link it onto PATH like `nvcat`. See
 [development and integration notes](docs/DEVELOPMENT.md).
 
 ## Benchmarks

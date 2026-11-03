@@ -1,5 +1,5 @@
 {
-  "description": "Filetypes nvcat renders. Order matters: the first matching entry wins. Matching is case-insensitive. 'extensions' match *.EXT, 'names' match the basename (globs allowed), 'paths' match the whole path. 'lang' is the Tree-sitter language when it differs from the filetype; filetypes without an installed highlights query use Neovim's regex syntax. 'requires' adds a check after a glob match: 'ancestor_file' names a file that must exist in the directory above the nearest 'templates' directory, 'head_regex' must match within the first 40 lines. gen-dispatch hands a file to bat when bat claims its name or path, unless the entry sets 'prefer_over_bat'. Run ./gen-dispatch after editing.",
+  "description": "Filetypes nvcat renders. Order matters: the first matching entry wins. Matching is case-insensitive. 'extensions' match *.EXT, 'names' match the basename (globs allowed), 'paths' match the whole path. 'lang' is the Tree-sitter language when it differs from the filetype; filetypes without an installed highlights query use Neovim's regex syntax. 'requires' adds a check after a glob match: 'ancestor_file' names a file that must exist in the directory above the nearest 'templates' directory, 'head_regex' must match within the first 40 lines. gen-dispatch hands a file to bat when bat claims its name or path, unless the entry sets 'prefer_over_bat'. 'last' entries are checked after the generated filetypes.regex.json (./gen-filetypes), which lists Neovim's regex-syntax filetypes that bat has no syntax for. Run ./gen-dispatch after editing.",
   "filetypes": [
     {"filetype": "markdown", "prefer_over_bat": true, "extensions": ["md", "markdown", "mdown", "mdwn", "mkd", "mkdn"]},
     {"filetype": "helm", "paths": ["*/templates/*.yaml", "*/templates/*.yml", "*/templates/*.tpl"],
@@ -46,7 +46,7 @@
     {"filetype": "cue", "extensions": ["cue"]},
     {"filetype": "dhall", "extensions": ["dhall"]},
     {"filetype": "handlebars", "lang": "glimmer", "extensions": ["hbs", "handlebars"]},
-    {"filetype": "conf", "extensions": ["conf", "ctags"],
+    {"filetype": "conf", "last": true, "extensions": ["conf", "ctags"],
      "names": [".chktexrc", ".ripgreprc", "ripgreprc", ".x11vncrc", "auto.master", "texdoc.cnf"]}
   ]
 }

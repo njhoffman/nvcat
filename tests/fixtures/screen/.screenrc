@@ -1,0 +1,5 @@
+# GNU screen
+startup_message off
+defscrollback 10000
+hardstatus alwayslastline "%{= kw}%H %-w%n %t%+w"
+bind c screen 1

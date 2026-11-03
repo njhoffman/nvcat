@@ -6,6 +6,32 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-02
+
+### Added
+
+- 397 more filetypes: every filetype Neovim highlights with a regex syntax file that bat has no syntax for
+  (`sed`, `sudoers`, `sysctl`, `screenrc`, `mailcap`, `expect`, Debian control files, linker scripts, ...),
+  matched by the extensions, file names and paths Neovim's filetype registry gives them. They are generated
+  into `filetypes.regex.json` by the new `./gen-filetypes` (also `make filetypes`), which updates their table
+  in SYNTAX.md, and are checked after `filetypes.json` and before its catch-all `conf`. Globs bat claims stay
+  with bat.
+- `nvcat --filetypes` lists every filetype nvcat matches by name, in match order, as `filetype`, table
+  (`filetypes.json` or `regex`) and globs, tab-separated.
+
+### Changed
+
+- `nvcat-dispatch` checks the generated filetypes in a second stage that bash parses only for files the
+  first stage does not match, so Markdown and `filetypes.json` files route as fast as before; other files
+  take about 5 ms longer.
+- Detection by file name in nvcat indexes the globs once and loads the generated table only when
+  `filetypes.json` has no match.
+
+### Fixed
+
+- Binary input (a NUL byte in the first 8 KiB) falls back to bat, which prints a notice, instead of being
+  rendered as raw control bytes.
+
 ## [0.10.1] - 2026-10-31
 
 ### Fixed

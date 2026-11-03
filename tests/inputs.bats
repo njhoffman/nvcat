@@ -151,3 +151,37 @@ detected() {
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [[ $output == *'nvim '* ]]
 }
+
+@test "a generated regex filetype is detected and highlighted with its syntax file" {
+  run detected "$FIXTURES/sed/strip.sed"
+  [ "$output" = "sed syntax" ]
+  run "$NVCAT" --paging=never --columns 60 --all "$FIXTURES/sed/strip.sed"
+  [ "$status" -eq 0 ]
+  [[ $output == *$'\e['* ]]
+}
+
+@test "--filetypes lists both tables in match order without a file" {
+  run --separate-stderr "$NVCAT" --filetypes
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+  [ "${lines[0]}" = $'markdown\tfiletypes.json\t*.md *.markdown *.mdown *.mdwn *.mkd *.mkdn' ]
+  [[ ${lines[-1]} == $'conf\tfiletypes.json\t'* ]]
+  [[ $output == *$'\njust\tfiletypes.json\t*.just justfile .justfile\n'* ]]
+  [[ $output == *$'\nsed\tregex\t*.sed\n'* ]]
+  # One line per filetype: nanorc's names and extensions are separate entries in the table.
+  [ "$(grep -c $'^nanorc\t' <<<"$output")" -eq 1 ]
+  [[ $(grep $'^nanorc\t' <<<"$output") == *'*/etc/nanorc'*'*.nanorc'* ]]
+  expected=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import filetypes
+print(len({entry["filetype"] for entry in filetypes.ordered()}))' "$ROOT")
+  [ "${#lines[@]}" -eq "$expected" ]
+  while IFS=$'\t' read -r filetype table globs; do
+    [ -n "$filetype" ] && [ -n "$globs" ] || { echo "bad line: $filetype"; return 1; }
+    [[ $table == filetypes.json || $table == regex ]] || { echo "bad table: $table"; return 1; }
+  done <<<"$output"
+}
+
+@test "--filetypes survives a closed pipe" {
+  run bash -c '"$1" --filetypes | head -1' _ "$NVCAT"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'markdown\tfiletypes.json\t*.md *.markdown *.mdown *.mdwn *.mkd *.mkdn' ]
+}
