@@ -6,6 +6,20 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-03
+
+### Changed
+
+- `nvcat-dispatch` and `filetypes.bat.json` are no longer tracked: they embed this machine's bat syntaxes
+  and `--map-syntax` globs, so each machine generates its own. `just install` runs `./gen-dispatch` before
+  linking; after updating the checkout or changing bat's config, run `just dispatch` (or `just install`).
+  The test suite generates them first (`tests/setup_suite.bash`), so it passes on any machine.
+- `gen-dispatch` works without bat: it writes a router with no bat claims and says so.
+
+### Added
+
+- `nvcat --check` warns when `nvcat-dispatch` is missing or older than the tables it is generated from.
+
 ## [0.15.1] - 2026-11-03
 
 ### Changed

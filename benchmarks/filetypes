@@ -224,6 +224,8 @@ def main():
       raise SystemExit(f"filetypes: not in filetypes.json: {', '.join(unknown)}")
     names = [name for name in names if name in wanted]
   runs = 3 if args.quick else args.runs
+  if not (ROOT / "nvcat-dispatch").exists():
+    raise SystemExit("filetypes: nvcat-dispatch is not generated; run `just dispatch` (or `just bench-filetypes`)")
   if not wait_for_load(args.max_load, args.max_wait, 15):
     raise SystemExit(f"filetypes: load stayed above {args.max_load:.2f}; nothing measured")
   info = dict(metadata(), runs=runs)

@@ -13,8 +13,8 @@ default:
 
 # Links, not copies: nvcat finds profile.lua, readonly.py and queries/ next to its real path.
 
-# Link nvcat and nvcat-dispatch into BINDIR (PREFIX=... or BINDIR=... to change)
-install: check
+# Generate nvcat-dispatch from this machine's bat, then link nvcat and it into BINDIR (PREFIX=... or BINDIR=...)
+install: dispatch check
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "{{ bindir }}"
@@ -70,14 +70,14 @@ bench:
     benchmarks/run
 
 # Run benchmarks/filetypes (records the baseline, updates docs/PERFORMANCE.md)
-bench-filetypes *args:
+bench-filetypes *args: dispatch
     benchmarks/filetypes {{ args }}
 
 # Run benchmarks/highlighter (the highlighter index on and off; --update rewrites docs/PERFORMANCE.md)
 bench-highlighter *args:
     benchmarks/highlighter {{ args }}
 
-# Regenerate nvcat-dispatch and filetypes.bat.json from the filetype tables and bat
+# Generate nvcat-dispatch and filetypes.bat.json from the filetype tables and this machine's bat (not tracked)
 dispatch:
     ./gen-dispatch
 

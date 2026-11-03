@@ -128,9 +128,15 @@ Reviewed: 2026-10-31
   `nvpreview`, `vimprint`, `screencat` (describes the grid capture). Renaming touches the executable,
   `nvcat-dispatch`, the `nvcat_ready` RPC event, the `_G.nvcat` Lua module, the temp-dir prefix,
   docs, and the PATH links; keep an `nvcat` symlink for one release.
-- [ ] **Dispatch carries machine-specific paths.** (p3) [chore] `nvcat-dispatch` embeds bat's version and
+- [x] **Dispatch carries machine-specific paths.** (p3) [chore] `nvcat-dispatch` embeds bat's version and
   `--map-syntax`/home-directory globs from this machine's bat config; another machine must run
-  `./gen-dispatch`, and `tests/dispatch.bats` fails until it does.
+  `./gen-dispatch`, and `tests/dispatch.bats` fails until it does. Done in 0.16.0: neither file is tracked,
+  `just install` generates them, the suite generates its own, and `nvcat --check` warns when stale.
+- [ ] **filetypes.regex.json and SYNTAX.md are generated from this machine.** (p3) [chore] `./gen-filetypes`
+  derives them from the local Neovim, its syntax files and parsers, and bat, and `tests/dispatch.bats` checks
+  they are current, so another machine fails that test. Unlike the router they are worth committing (they are
+  the documented coverage); consider skipping the check unless Neovim and bat match the versions recorded in
+  the file.
 - [x] **Render tests depend on this machine's Neovim setup.** (p2) [test] `tests/render.bats` needs the
   personal parsers and theme; skip it with a clear message when `find_paths()` reports missing dependencies.
 

@@ -153,6 +153,22 @@ def find_paths(settings=None):
   return dict(config.runtime_paths(settings), root=str(ROOT))
 
 
+DISPATCH_INPUTS = ["filetypes.json", "filetypes.regex.json", "filetypes.py", "gen-dispatch"]
+
+
+def dispatch_problem(root=ROOT):
+  """Why root's nvcat-dispatch needs regenerating (just dispatch), or None. It is generated per machine from
+  bat, so a checkout has none until just install, and an update leaves it older than its inputs."""
+  script = root / "nvcat-dispatch"
+  if not script.exists():
+    return "nvcat-dispatch is not generated: run `just dispatch` (`just install` does too)"
+  built = script.stat().st_mtime
+  newer = [name for name in DISPATCH_INPUTS if (root / name).exists() and (root / name).stat().st_mtime > built]
+  if newer:
+    return f"nvcat-dispatch is older than {', '.join(newer)}: run `just dispatch`"
+  return None
+
+
 def check(installed=False):
   """Print the resolved configuration, versions, and problems; return 1 if a required piece is missing.
 
@@ -189,6 +205,9 @@ def check(installed=False):
   except OSError as error:
     print(f"  landlock         unavailable: {error}")
   errors, warnings = config.problems(settings)
+  problem = dispatch_problem()
+  if problem:
+    warnings.append(problem)
   print("tree-sitter queries:")
   if errors:
     print("  not checked: required dependencies are missing")

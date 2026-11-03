@@ -175,7 +175,12 @@ def main():
   parser.add_argument("--claims", type=Path, default=filetypes.CLAIMS,
                       help="JSON file for bat's claims, or - to leave it alone")
   args = parser.parse_args()
-  version, patterns = filetypes.bat_patterns()
+  try:
+    version, patterns = filetypes.bat_patterns()
+  except FileNotFoundError:
+    print("gen-dispatch: bat is not installed; generating without bat's claims (every other file still goes "
+          "to bat, which fails until it is installed)", file=sys.stderr)
+    version, patterns = "(not installed)", []
   entries = filetypes.ordered()
   first = [entry for entry in filetypes.load() if not entry.get("last")]
   script, claimed = generate(first, entries[len(first):], version, patterns)

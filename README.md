@@ -37,13 +37,16 @@ Dependencies are read from an existing installation; no plugin manager runs.
 
 ```sh
 just check     # dependencies and resolved configuration
-just install   # symlink nvcat and nvcat-dispatch into ~/.local/bin (PREFIX=... to change)
+just install   # generate nvcat-dispatch, then symlink it and nvcat into ~/.local/bin (PREFIX=... to change)
 just uninstall
 ```
 
 The commands are linked, not copied: nvcat finds `profile.lua`, `readonly.py`, `config.py`,
-`filetypes.*` and `queries/` next to its real path, so keep the checkout in place. `just test`, `just bench`
-and `just dispatch` run the tests, the benchmarks and the dispatch generator.
+`filetypes.*` and `queries/` next to its real path, so keep the checkout in place. `nvcat-dispatch` and
+`filetypes.bat.json` are generated on each machine from its bat and are not tracked; run `just dispatch` (or
+`just install` again) after updating the checkout or changing bat's config, and `nvcat --check` warns while
+the router is missing or older than its tables. `just test`, `just bench` and `just dispatch` run the tests,
+the benchmarks and the dispatch generator.
 
 ## Configuration
 
@@ -265,10 +268,13 @@ For a glob Neovim assigns by content, `--print` prints `auto` and the file goes 
 which costs a Neovim start before bat takes over when the content is not one of nvcat's filetypes.
 
 The script is a generated bash `case` (a few milliseconds, no Neovim or Python start-up); the generated
-filetypes sit in a second stage that bash only parses for files the first stage does not match. Regenerate it
-with `./gen-dispatch` (which also writes `filetypes.bat.json`) after editing [filetypes.json](filetypes.json) or changing bat's syntaxes or
-`--map-syntax` config, and run `./gen-filetypes` (which also regenerates SYNTAX.md's coverage lists) first when Neovim, its syntax
-files or parsers, or bat change (`just filetypes` runs both); `tests/dispatch.bats` fails while either is stale. Link it onto PATH like `nvcat`. See
+filetypes sit in a second stage that bash only parses for files the first stage does not match. It is built
+on each machine (`just install` or `just dispatch`, which run `./gen-dispatch`), since it embeds that
+machine's bat syntaxes and `--map-syntax` globs; without bat it routes nvcat's filetypes only. Regenerate it
+after editing [filetypes.json](filetypes.json) or changing bat's syntaxes or `--map-syntax` config. The test
+suite generates its own (tests/setup_suite.bash). Run `./gen-filetypes` (which also regenerates SYNTAX.md's
+coverage lists) first when Neovim, its syntax files or parsers, or bat change (`just filetypes` runs both);
+`tests/dispatch.bats` fails while filetypes.regex.json is stale. See
 [development and integration notes](docs/DEVELOPMENT.md).
 
 ## Benchmarks
