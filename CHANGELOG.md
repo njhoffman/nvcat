@@ -6,6 +6,16 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-03
+
+### Changed
+
+- `benchmarks/run` renders the samples and modes round-robin (one warm-up of each, then rounds that render
+  every one once), so a burst of load from another process spreads over every row instead of ruining one.
+- `benchmarks/run` does not record a noisy run: when the load ends above `--max-load`, or the typical startup
+  is over 1.5 times its median of the last five recorded runs, it prints the table, says why, and exits 3.
+  `--record-noisy` records it anyway, for a startup that really changed.
+
 ## [0.18.0] - 2026-11-03
 
 ### Changed

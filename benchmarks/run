@@ -6,6 +6,12 @@ Waits until the 1-minute load average is low enough, then renders each sample se
 median startup time (until Neovim is set up, from nvcat --timings-json) and the median peak RSS of Neovim
 and of nvcat itself. The SYNTAX.md table compares the new wall-time medians with the average of all
 earlier runs.
+
+The samples and modes run round-robin, one render of each per round, so a burst of load from another
+process spreads over every row instead of ruining one. A run is noisy, and is printed but not recorded
+(exit 3), when the load ends above --max-load or the typical startup is over 1.5 times its recent history:
+startup does not depend on the document, so it shows load rather than a change. --record-noisy records it
+anyway, for a startup that really changed.
 """
 
 import argparse
@@ -34,8 +40,12 @@ FIELDS = ["date", "version", "commit", "sample", "mode", "median_ms", "min_ms", 
 START, END = "<!-- benchmark:start -->", "<!-- benchmark:end -->"
 
 
-def measure(sample, mode, runs, timeout):
-  """Median and minimum wall ms, median startup ms, and median peak RSS (MiB) of Neovim and of nvcat."""
+NOISE_RATIO = 1.5  # Startup over this many times its recent median marks the run noisy.
+NOISE_HISTORY = 5  # Recorded runs per sample and mode that form that median.
+
+
+def render(sample, mode, timeout):
+  """One render: (wall ms, startup ms, Neovim peak RSS MiB, nvcat peak RSS MiB)."""
   flags, variables = MODES[mode]
   size = [] if variables else ["--columns", str(COLUMNS)]
   command = [str(ROOT / "nvcat"), "--paging=never", *size, "--timeout", str(timeout), "--timings-json",
@@ -43,26 +53,55 @@ def measure(sample, mode, runs, timeout):
   environment = {name: value for name, value in os.environ.items()
                  if name not in ("FZF_PREVIEW_COLUMNS", "FZF_PREVIEW_LINES", "NVIM")}
   environment.update(variables)
-  times, startups, nvim_rss, python_rss = [], [], [], []
-  for index in range(runs + 1):  # The first run warms the page cache and is discarded.
-    start = time.perf_counter()
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
-    elapsed = (time.perf_counter() - start) * 1000
-    stderr = result.stderr.decode(errors="replace").strip()
-    try:
-      report = json.loads(stderr)  # Anything else on stderr (a warning, a fallback notice) fails the run.
-    except ValueError:
-      report = None
-    if result.returncode != 0 or not result.stdout or report is None:
-      raise SystemExit(f"benchmark: {sample}/{mode} failed: {stderr}")
-    if index:
-      times.append(elapsed)
-      startups.append(sum(report["phases"].get(name, 0) for name in STARTUP_PHASES))
-      nvim_rss.append(report["peak_rss_kb"]["children"] / 1024)
-      python_rss.append(report["peak_rss_kb"]["python"] / 1024)
-  return {"median_ms": round(statistics.median(times)), "min_ms": round(min(times)),
-          "startup_ms": round(statistics.median(startups)), "nvim_rss_mib": round(statistics.median(nvim_rss)),
-          "python_rss_mib": round(statistics.median(python_rss))}
+  start = time.perf_counter()
+  result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
+  elapsed = (time.perf_counter() - start) * 1000
+  stderr = result.stderr.decode(errors="replace").strip()
+  try:
+    report = json.loads(stderr)  # Anything else on stderr (a warning, a fallback notice) fails the run.
+  except ValueError:
+    report = None
+  if result.returncode != 0 or not result.stdout or report is None:
+    raise SystemExit(f"benchmark: {sample}/{mode} failed: {stderr}")
+  return (elapsed, sum(report["phases"].get(name, 0) for name in STARTUP_PHASES),
+          report["peak_rss_kb"]["children"] / 1024, report["peak_rss_kb"]["python"] / 1024)
+
+
+def measure(pairs, runs, timeout, render=render):
+  """Per (sample, mode): median and minimum wall ms, median startup ms, and median peak RSS (MiB) of Neovim
+  and of nvcat. One warm-up render of each pair (discarded: page cache, parsers), then runs rounds that
+  render every pair once, so load bursts spread across the pairs."""
+  for pair in pairs:
+    render(*pair, timeout)
+  results = {pair: [] for pair in pairs}
+  for _ in range(runs):
+    for pair in pairs:
+      results[pair].append(render(*pair, timeout))
+  summary = {}
+  for pair, items in results.items():
+    times, startups, nvim_rss, python_rss = zip(*items)
+    summary[pair] = {"median_ms": round(statistics.median(times)), "min_ms": round(min(times)),
+                     "startup_ms": round(statistics.median(startups)),
+                     "nvim_rss_mib": round(statistics.median(nvim_rss)),
+                     "python_rss_mib": round(statistics.median(python_rss))}
+  return summary
+
+
+def noise(rows, previous, load_end, max_load):
+  """Why the run should not be recorded, or None. rows: this run; previous: history.tsv rows."""
+  if load_end > max_load:
+    return f"the load rose to {load_end:.2f} (over {max_load:.2f}) during the run"
+  ratios = []
+  for row in rows:
+    earlier = [float(item["startup_ms"]) for item in previous
+               if item["sample"] == row["sample"] and item["mode"] == row["mode"]
+               and item.get("startup_ms") not in (None, "", "startup_ms")][-NOISE_HISTORY:]
+    if earlier and statistics.median(earlier) > 0:
+      ratios.append(row["startup_ms"] / statistics.median(earlier))
+  if ratios and statistics.median(ratios) > NOISE_RATIO:
+    return (f"startup is {statistics.median(ratios):.1f}x its recent median (over {NOISE_RATIO}x), "
+            "which points to load from another process")
+  return None
 
 
 def read_history():
@@ -144,22 +183,29 @@ def main():
   parser.add_argument("--interval", type=float, default=15, help="Seconds between load checks (default: 15)")
   parser.add_argument("--timeout", type=int, default=60, help="nvcat --timeout per render (default: 60)")
   parser.add_argument("--dry-run", action="store_true", help="Print the table without recording anything")
+  parser.add_argument("--record-noisy", action="store_true",
+                      help="Record a run even when it looks noisy (for a startup that really changed)")
   args = parser.parse_args()
   if not wait_for_load(args.max_load, args.max_wait, args.interval):
     raise SystemExit(f"benchmark: load stayed above {args.max_load:.2f} for {args.max_wait:.0f}s; nothing recorded")
   base = dict(metadata(), runs=args.runs)
+  pairs = [(sample, mode) for sample in SAMPLES for mode in MODES]
   rows = []
-  for sample in SAMPLES:
-    for mode in MODES:
-      result = measure(sample, mode, args.runs, args.timeout)
-      rows.append(dict(base, sample=sample, mode=mode, **result))
-      print(f"{sample:7} {mode:9} {result['median_ms']:7d} ms  startup {result['startup_ms']:4d} ms  "
-            f"nvim {result['nvim_rss_mib']:4d} MiB", file=sys.stderr, flush=True)
+  for (sample, mode), result in measure(pairs, args.runs, args.timeout).items():
+    rows.append(dict(base, sample=sample, mode=mode, **result))
+    print(f"{sample:7} {mode:9} {result['median_ms']:7d} ms  startup {result['startup_ms']:4d} ms  "
+          f"nvim {result['nvim_rss_mib']:4d} MiB", file=sys.stderr, flush=True)
   previous = read_history()
   block = table(rows, previous)
   if args.dry_run:
     print(block)
     return 0
+  reason = noise(rows, previous, load1(), args.max_load)
+  if reason and not args.record_noisy:
+    print(block)
+    print(f"benchmark: noisy, not recorded: {reason}; rerun when the machine is quiet, or pass --record-noisy",
+          file=sys.stderr)
+    return 3
   append_history(rows)
   update_syntax(block)
   print(block)

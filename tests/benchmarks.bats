@@ -97,3 +97,34 @@ print('ok')"
   grep -qE '^\| sample\.md \| [0-9]+ \| [0-9,]+ \| [0-9]+ / [0-9]+ \|' <<<"$output"
   [ "$(sha1sum <"$ROOT/docs/PERFORMANCE.md")" = "$before" ]
 }
+
+@test "benchmarks/run warms every sample and mode once, then renders them round-robin" {
+  run with_script run "
+calls = []
+def fake(sample, mode, timeout):
+  calls.append((sample, mode))
+  return (len(calls), 10.0, 40.0, 20.0)
+pairs = [('a', 'x'), ('a', 'y'), ('b', 'x')]
+summary = m.measure(pairs, 2, 60, render=fake)
+assert calls == pairs * 3, calls
+# Rounds 2 and 3 (calls 4-9): a/x took 4 and 7 ms.
+assert summary[('a', 'x')]['median_ms'] == round((4 + 7) / 2) and summary[('a', 'x')]['min_ms'] == 4, summary
+assert summary[('b', 'x')]['startup_ms'] == 10 and summary[('b', 'x')]['nvim_rss_mib'] == 40
+print('ok')"
+  [ "$output" = ok ]
+}
+
+@test "benchmarks/run calls a run noisy when the load rose or startup is far above its history" {
+  run with_script run "
+history = [{'sample': 's', 'mode': 'm', 'startup_ms': str(v)} for v in (40, 42, 38, 41, 39, 400)]
+history.append({'sample': 's', 'mode': 'm', 'startup_ms': ''})  # Before the column existed.
+quiet = [{'sample': 's', 'mode': 'm', 'startup_ms': 50}]
+busy = [{'sample': 's', 'mode': 'm', 'startup_ms': 90}]
+# The last five recorded startups (42 38 41 39 400) have a median of 41.
+assert m.noise(quiet, history, 2.0, 4.8) is None
+assert 'startup is 2.2x' in m.noise(busy, history, 2.0, 4.8), m.noise(busy, history, 2.0, 4.8)
+assert 'load rose to 6.10' in m.noise(quiet, history, 6.1, 4.8)
+assert m.noise(busy, [], 2.0, 4.8) is None  # No history: nothing to compare with.
+print('ok')"
+  [ "$output" = ok ]
+}

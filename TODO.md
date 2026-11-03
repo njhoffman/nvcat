@@ -56,7 +56,6 @@ Reviewed: 2026-11-03
 - [ ] **examples/fzf-files without a generated router.** (p3) [bug] Since 0.16.0 a checkout has no
   `nvcat-dispatch` until `just install` or `just dispatch`; the example then shows a "No such file" error
   in every preview. Check for it at start and print the command to run (or run `./gen-dispatch`).
-
 ## Performance
 
 - [x] **Track Markdown benchmark averages.** (p2) [perf] `benchmarks/run` records small/medium/large/code samples
@@ -77,7 +76,6 @@ Reviewed: 2026-11-03
   `grid_scroll`, O(rows x columns) per scroll; at 1,000 rows this adds up. Copy only the scrolled region.
 - [x] (p2) [perf] Measure startup, first usable fzf content, total render time, and peak memory on representative documents.
   `benchmarks/run` records an fzf mode, startup and peak RSS of Neovim and Python.
-- [ ] (p3) [perf] Separate warm-process results from fresh-process measurements and rendered-output cache hits.
 - [x] (p2) [perf] Profile before optimizing; identify theme loading, parser loading, rendering, and RPC costs separately.
   `--timings`/`--timings-json`; findings in docs/PERFORMANCE.md.
 - [ ] **Redraw once per Markdown frame.** (p2) [perf] render-markdown calls `on.render` three times per frame and
@@ -95,12 +93,16 @@ Reviewed: 2026-11-03
   code into a module that the `nvcat` entry point imports, so it is cached, and consider skipping tomllib when
   no config file exists. Worth about 5-10 ms per fzf preview, a quarter of the 16-23 ms nvcat costs a small file
   over the Markdown-only v0.1.0.
-- [ ] **benchmarks/run records noisy runs.** (p3) [perf] Its gate is the 1-minute load average (at most 0.6 per
+- [x] **benchmarks/run records noisy runs.** (p3) [perf] Its gate is the 1-minute load average (at most 0.6 per
   CPU), which a burst from another process slips under: on 2026-11-03 two runs had to be reverted by hand
   (startup 84-124 ms against 35-45 ms). Keep the threshold, and also refuse to record a run whose startup
   median is far above the recent history, or interleave the samples so a burst spreads across all of them.
+  Done in 0.19.0: both. Round-robin rounds, and exit 3 without recording when the load ends above the gate
+  or startup is over 1.5x its median of the last five runs (`--record-noisy` overrides).
 - [ ] (p3) [perf] Trial an optional persistent Neovim worker if startup dominates, with cancellation and cleanup tests.
+  `benchmarks/run` then records warm-worker results as their own mode, apart from fresh starts.
 - [ ] (p3) [perf] Add caching only if measurements justify it; include viewport, file content, theme, configuration, and parser versions.
+  `benchmarks/run` then records cache hits as their own mode, apart from renders.
 
 ## Rendering fidelity and larger documents
 

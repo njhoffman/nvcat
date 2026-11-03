@@ -297,7 +297,10 @@ one; regenerate them with `benchmarks/generate.py`) in complete, viewport, and f
 variables, which is the time to the first usable preview), appends the medians of wall time, startup and peak
 Neovim and Python RSS to `benchmarks/history.tsv`, and rewrites the comparison table in
 [SYNTAX.md](SYNTAX.md#markdown-rendering-benchmarks) against the average of all earlier runs. Run it after
-every change.
+every change. The samples and modes run round-robin, so a burst of load from another process spreads over
+all rows; a run is printed but not recorded (exit 3) when the load ends above the gate or startup, which does
+not depend on the document, is over 1.5 times its median of the last five runs. `--record-noisy` records it
+anyway, for a startup that really changed.
 
 ```sh
 benchmarks/filetypes                    # every filetypes.json entry; records; several minutes
