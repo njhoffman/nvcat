@@ -84,3 +84,12 @@ print('ok')"
   [ "$status" -eq 1 ]
   [[ $output == *'not in filetypes.json: nosuch'* ]]
 }
+
+@test "the highlighter benchmark compares one document in both modes and records nothing" {
+  before=$(sha1sum <"$ROOT/docs/PERFORMANCE.md")
+  run --separate-stderr "$ROOT/benchmarks/highlighter" --runs 1 --max-load 1000 "$ROOT/tests/fixtures/markdown/sample.md"
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [[ $output == '<!-- highlighter:start -->'* && $output == *'<!-- highlighter:end -->' ]]
+  grep -qE '^\| sample\.md \| [0-9]+ \| [0-9,]+ \| [0-9]+ / [0-9]+ \|' <<<"$output"
+  [ "$(sha1sum <"$ROOT/docs/PERFORMANCE.md")" = "$before" ]
+}

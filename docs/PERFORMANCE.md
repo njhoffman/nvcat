@@ -94,3 +94,35 @@ Recorded 2026-11-01T01:37Z, version 0.10.1 (33cdf70-dirty), load 2.08, NVIM v0.1
 | conf | syntax | 84 | 501 | 110 | - | 79 | 8 | 1 | 53 | 0 | 2 | 4 |
 
 <!-- filetypes:end -->
+
+## Tree-sitter highlighter index
+
+For each drawn line, Neovim's Tree-sitter highlighter (`on_range_impl` in
+`runtime/lua/vim/treesitter/highlighter.lua`, 0.12 and later) walks every highlight state in the window, one
+per tree. Markdown injects a tree per inline span and per code block, so a 900-line table document has about
+2,650 states, and counting the visits on `large.md` showed 0.4% of them touch the line being drawn. This walk
+was most of the redraw time on large documents.
+
+`index_highlighter` in `profile.lua` builds, per list of states, the rows each tree covers and the trees in
+start order, and narrows the list each call sees to the trees on its rows plus the next tree to start. The
+states keep their order, so extmark priorities and the output are unchanged; `tests/highlighter.bats`
+compares the output with the index on and off. One behavior differs: the stock loop counts trees above the
+line toward the skip-ahead position it returns, so that position is behind the line and Neovim calls again for
+the next line. Narrowed, it is the next capture or tree start, so Neovim makes fewer calls.
+
+The upstream fix is the same index inside Neovim ([draft issue](upstream/neovim-treesitter-injection-cost.md)).
+Until then the patch depends on private internals: it checks each one, stays off when one is missing, and
+reports the reason as `highlight_index` in `--timings`. Rerun `benchmarks/highlighter` after a Neovim upgrade.
+
+<!-- highlighter:start -->
+
+Recorded 2026-11-03T16:11Z by `benchmarks/highlighter` (nvcat 0.15.0, 49a798e-dirty), NVIM v0.13.0-dev-1915+gc5641b2bfb, load 4.16. Complete renders at 100 columns, medians of 3 runs per mode, the modes alternating. Milliseconds; on_range is the time inside Neovim's per-range highlighter callbacks.
+
+| Document | Lines | Highlight states | on_range calls, stock / indexed | on_range, stock | on_range, indexed | Render, stock | Render, indexed | Change |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| benchmarks/medium.md | 353 | 309 | 352 / 286 | 126 | 25 | 727 | 542 | -25% |
+| benchmarks/large.md | 888 | 707 | 887 / 716 | 603 | 41 | 1397 | 646 | -54% |
+| benchmarks/code.md | 546 | 125 | 545 / 504 | 79 | 30 | 523 | 495 | -5% |
+| 600-row table (generated) | 604 | 2,406 | 603 / 603 | 1750 | 64 | 2336 | 634 | -73% |
+
+<!-- highlighter:end -->

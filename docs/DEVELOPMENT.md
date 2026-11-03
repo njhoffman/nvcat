@@ -75,4 +75,6 @@ waiting for render-markdown. Parsers load on demand.
 
 See [TODO.md](../TODO.md). Keep the input immutability, cancellation, and ANSI-output checks for any
 optimization, and run `benchmarks/run` after every change; run `benchmarks/filetypes --check` after changes
-to the profile, the filetype table, or parser handling.
+to the profile, the filetype table, or parser handling, and `benchmarks/highlighter` after a Neovim
+upgrade or a change to `index_highlighter` in `profile.lua` (tests/highlighter.bats fails first when Neovim's
+highlighter internals change).

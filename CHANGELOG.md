@@ -6,6 +6,23 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-03
+
+### Changed
+
+- Faster Markdown on Neovim 0.12 and later: `profile.lua` narrows the highlight states Neovim's Tree-sitter
+  highlighter walks for each drawn line to the trees on that line. Output is unchanged; complete renders of
+  documents with many inline spans, tables and code blocks take 5-73% less time (54% for benchmarks/large.md, 73% for a 600-row table). The patch checks the
+  private internals it relies on and stays off when one has changed; `highlight_index` in `--timings` shows
+  `on`, `off` or the reason, and `NVCAT_HIGHLIGHT_INDEX=0` turns it off. `tests/highlighter.bats` fails when
+  Neovim's internals no longer match and compares output with the index on and off.
+
+### Added
+
+- `benchmarks/highlighter` (`just bench-highlighter`): renders documents with the index on and off, times
+  Neovim's highlighter callbacks, fails when the outputs differ, and with `--update` records the table in
+  docs/PERFORMANCE.md. The numbers are also in the drafted Neovim issue.
+
 ## [0.14.0] - 2026-11-03
 
 ### Added

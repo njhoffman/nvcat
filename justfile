@@ -73,6 +73,10 @@ bench:
 bench-filetypes *args:
     benchmarks/filetypes {{ args }}
 
+# Run benchmarks/highlighter (the highlighter index on and off; --update rewrites docs/PERFORMANCE.md)
+bench-highlighter *args:
+    benchmarks/highlighter {{ args }}
+
 # Regenerate nvcat-dispatch and filetypes.bat.json from the filetype tables and bat
 dispatch:
     ./gen-dispatch

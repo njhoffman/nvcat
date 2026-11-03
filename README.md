@@ -206,6 +206,13 @@ skips render-markdown, so the raw Markdown is shown with Vim's markdown syntax. 
 an escape hatch for a slow or broken parser (Tree-sitter's query compilation dominates some filetypes, see
 [docs/PERFORMANCE.md](docs/PERFORMANCE.md)). The built-in pager honours it too.
 
+On Neovim 0.12 and later, nvcat narrows the highlight states Neovim's Tree-sitter highlighter visits for each
+drawn line to the trees on that line. The output is unchanged; Markdown with many inline spans and code blocks
+renders up to 3.7 times faster (a 600-row table: 2.3 s to 0.63 s) (see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#tree-sitter-highlighter-index)). It
+patches private Neovim internals, checks each one first and stays off when one has changed;
+`highlight_index` in `--timings` shows `on`, `off` or why it is unavailable. `NVCAT_HIGHLIGHT_INDEX=0`
+turns it off.
+
 ### Timings
 
 `--timings` prints, after the output, how long each phase took and the peak memory, on stderr; stdout is
@@ -289,6 +296,15 @@ Times each filetype on its fixture and on that fixture repeated to 500 lines wit
 split. Results go to `benchmarks/filetypes.tsv` and [docs/PERFORMANCE.md](docs/PERFORMANCE.md). `--check`
 exits 1 when a filetype got slower than the baseline by 25% and 50 ms (`--threshold`, `--min-ms`). Needs
 hyperfine. `just bench-filetypes` runs it.
+
+```sh
+benchmarks/highlighter                  # the samples and a 600-row table, index on and off
+benchmarks/highlighter --update FILE    # other documents; --update rewrites docs/PERFORMANCE.md
+```
+
+Renders each document with the [highlighter index](#syntax-engine) on and off, alternating, and reports the
+render time and the time in Neovim's highlighter callbacks; it fails when the two outputs differ. Rerun it
+after a Neovim upgrade. `just bench-highlighter` runs it.
 
 ## Tests
 

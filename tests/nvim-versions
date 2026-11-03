@@ -19,7 +19,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/nvcat/nvim
 # 0.10.4 stays pinned below for the minimum-version test (dependencies.bats); nvcat refuses it.
 DEFAULT_VERSIONS=(v0.11.7 v0.12.6)
-DEFAULT_TESTS=(version config render robustness dependencies inputs fallback paging pager timings languages)
+DEFAULT_TESTS=(version config render robustness dependencies inputs fallback paging pager timings languages highlighter)
 
 # version/arch -> sha256 of nvim-linux-<arch>.tar.gz
 declare -A SHA256=(

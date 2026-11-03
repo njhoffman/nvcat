@@ -60,6 +60,26 @@ Scripts: [measure-text-height.lua](measure-text-height.lua), [measure-redraw.lua
 Per-line work proportional to the trees that intersect the line, e.g. an interval index over tree root ranges
 built once per `on_win`, and `_on_conceal_line` limited to trees containing the row.
 
+## Prototype
+
+nvcat patches this at runtime (`index_highlighter` in nvcat's `profile.lua`): per list of highlight states it
+indexes the rows each tree root covers, and `on_range_impl` sees only the states on the range's rows plus the
+next tree to start, in their original order. Output is byte-identical with and without the patch on every
+document tried. A side effect: the stock loop includes trees that end above the range when it computes the
+skip-ahead position, so the position it returns is behind the range and the provider is called again for
+the next line; with the narrowed list the position is the next capture or tree start, and there are fewer
+`on_range` calls (352 to 286 on a 353-line document).
+
+Measured with nvcat's `benchmarks/highlighter` (complete renders at 100 columns through an embedded Neovim with
+render-markdown.nvim, NVIM v0.13.0-dev-1915+gc5641b2bfb); the full table is in nvcat's docs/PERFORMANCE.md:
+
+| Document | Lines | Highlight states | on_range calls, stock / indexed | on_range, stock | on_range, indexed | Render, stock | Render, indexed | Change |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| benchmarks/medium.md | 353 | 309 | 352 / 286 | 126 | 25 | 727 | 542 | -25% |
+| benchmarks/large.md | 888 | 707 | 887 / 716 | 603 | 41 | 1397 | 646 | -54% |
+| benchmarks/code.md | 546 | 125 | 545 / 504 | 79 | 30 | 523 | 495 | -5% |
+| 600-row table (generated) | 604 | 2,406 | 603 / 603 | 1750 | 64 | 2336 | 634 | -73% |
+
 ## Context
 
 Found while rendering Markdown to ANSI through an embedded Neovim with render-markdown.nvim

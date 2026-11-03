@@ -30,7 +30,7 @@ Reviewed: 2026-10-31
 - [x] **Complete output of very large tables is still too slow.** (p1) [perf] Mitigated: two forced redraws
   removed and the grid pre-sized (2-3x faster), and output over `--budget` falls back to bat. The underlying
   cost is in Neovim (rows x injected trees); see the two items below.
-- [ ] **Patch the Tree-sitter highlighter at runtime.** (p3) [perf] In `profile.lua`, wrap
+- [x] **Patch the Tree-sitter highlighter at runtime.** (p3) [perf] In `profile.lua`, wrap
   `TSHighlighter`'s per-line path (`for_each_highlight_state` from `on_range_impl`) with a row-indexed lookup
   of tree root ranges built once per `on_win`, so each line visits only intersecting trees. Would let
   `SYNTAX.md`-sized tables render instead of falling back. Fragile: private internals of a dev build, so

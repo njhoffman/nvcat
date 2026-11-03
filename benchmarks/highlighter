@@ -1,0 +1,195 @@
+#!/usr/bin/python3
+"""Compare complete renders with and without profile.lua's highlighter row index (NVCAT_HIGHLIGHT_INDEX).
+
+Renders each document through nvcat's Renderer, alternating the index on and off, and times Neovim's
+Tree-sitter on_range callbacks alongside the render. Prints a Markdown table; --update writes it into
+docs/PERFORMANCE.md. The output of the two modes must be byte-identical; a difference is reported and the
+exit status is 1.
+
+Documents: benchmarks/{medium,large,code}.md and a generated 600-row table whose cells inject inline trees
+(the reproduction in docs/upstream), or the files given. Files over nvcat's row limit render their first rows.
+"""
+
+import argparse
+import contextlib
+import hashlib
+import importlib.machinery
+import importlib.util
+import os
+from pathlib import Path
+import statistics
+import sys
+import tempfile
+import time
+
+from common import HERE, ROOT, metadata, wait_for_load
+
+sys.path.insert(0, str(ROOT))
+_loader = importlib.machinery.SourceFileLoader("nvcat_script", str(ROOT / "nvcat"))
+nvcat = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader.name, _loader))
+_loader.exec_module(nvcat)
+import config  # noqa: E402
+
+DOC = ROOT / "docs" / "PERFORMANCE.md"
+START, END = "<!-- highlighter:start -->", "<!-- highlighter:end -->"
+COLUMNS = 100
+SAMPLES = ["medium", "large", "code"]
+TABLE_ROWS = 600
+
+# Counts and times the highlighter's on_range work, around whichever on_range_impl is installed (profile.lua's
+# indexed one or Neovim's), and records the largest list of highlight states.
+INSTRUMENT = r"""
+local H = require("vim.treesitter.highlighter")
+local hrtime = vim.uv.hrtime
+local stats = { ranges = 0, range_ns = 0, states = 0 }
+_G.nvcat_highlighter_stats = stats
+local slot, impl
+for i = 1, math.huge do
+  local name, value = debug.getupvalue(H._on_range, i)
+  if name == nil then break end
+  if name == "on_range_impl" then slot, impl = i, value break end
+end
+debug.setupvalue(H._on_range, slot, function(...)
+  local start = hrtime()
+  local row, col = impl(...)
+  stats.ranges = stats.ranges + 1
+  stats.range_ns = stats.range_ns + hrtime() - start
+  return row, col
+end)
+local prepare = H.prepare_highlight_states
+H.prepare_highlight_states = function(self, ...)
+  prepare(self, ...)
+  stats.states = math.max(stats.states, #self._highlight_states)
+end
+"""
+
+
+def table_document(rows):
+  lines = ["# Table", "", "| a | b | c | d |", "|---|---|---|---|"]
+  lines += [f"| `f{i}` | `.e{i}`, x | `p` | y |" for i in range(1, rows + 1)]
+  return "\n".join(lines) + "\n"
+
+
+@contextlib.contextmanager
+def index(enabled):
+  previous = os.environ.get("NVCAT_HIGHLIGHT_INDEX")
+  os.environ["NVCAT_HIGHLIGHT_INDEX"] = "1" if enabled else "0"
+  try:
+    yield
+  finally:
+    if previous is None:
+      del os.environ["NVCAT_HIGHLIGHT_INDEX"]
+    else:
+      os.environ["NVCAT_HIGHLIGHT_INDEX"] = previous
+
+
+def render(path, enabled, settings, paths, timeout):
+  """Wall ms, output digest, highlight_index fact and on_range stats of one complete render."""
+  lines = sum(1 for _ in open(path, "rb")) + 4
+  height = min(nvcat.MAX_ROWS, lines)
+  with index(enabled), nvcat.run_directory() as temporary:
+    renderer = nvcat.Renderer(settings["nvim"], paths, temporary, COLUMNS, height, timeout, nvcat.Timings())
+    try:
+      renderer.request("nvim_exec_lua", INSTRUMENT, [])
+      start = time.monotonic()
+      output, info = renderer.render(path, COLUMNS, height, 1, lines <= nvcat.MAX_ROWS)
+      wall = (time.monotonic() - start) * 1000
+      stats = renderer.request("nvim_exec_lua", "return _G.nvcat_highlighter_stats", [])
+    finally:
+      renderer.close()
+  return wall, hashlib.sha1(output).hexdigest(), info.get("highlight_index"), stats
+
+
+def measure(path, runs, settings, paths, timeout):
+  """Per mode (True: indexed): wall-ms and range-ms medians, range calls, states, digests and the fact."""
+  results = {True: [], False: []}
+  for run in range(runs + 1):
+    for enabled in (True, False) if run % 2 else (False, True):
+      result = render(path, enabled, settings, paths, timeout)
+      if run:  # The first round warms the page cache and the parsers.
+        results[enabled].append(result)
+  summary = {}
+  for enabled, items in results.items():
+    summary[enabled] = {
+      "wall": statistics.median(item[0] for item in items),
+      "range": statistics.median(item[3]["range_ns"] / 1e6 for item in items),
+      "ranges": items[-1][3]["ranges"],
+      "states": items[-1][3]["states"],
+      "digests": {item[1] for item in items},
+      "fact": items[-1][2],
+    }
+  return summary
+
+
+def block(rows, meta, runs):
+  out = [START, "",
+         f"Recorded {meta['date']} by `benchmarks/highlighter` (nvcat {meta['version']}, {meta['commit']}), "
+         f"{meta['nvim']}, load {meta['load1']}. Complete renders at {COLUMNS} columns, medians of {runs} runs "
+         "per mode, the modes alternating. Milliseconds; on_range is the time inside Neovim's per-range "
+         "highlighter callbacks.", "",
+         "| Document | Lines | Highlight states | on_range calls, stock / indexed | on_range, stock | on_range, indexed "
+         "| Render, stock | Render, indexed | Change |",
+         "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+  out += rows
+  out += ["", END]
+  return "\n".join(out)
+
+
+def main():
+  parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+  parser.add_argument("files", nargs="*", type=Path, help="Documents to render (default: the samples and a table)")
+  parser.add_argument("--runs", type=int, default=3, help="Measured runs per mode (default: 3)")
+  parser.add_argument("--update", action="store_true", help=f"Write the table into {DOC.relative_to(ROOT)}")
+  parser.add_argument("--max-load", type=float, default=max(1.0, (os.cpu_count() or 1) * 0.6),
+                      help="Wait until the 1-minute load average is at most this (default: 0.6 per CPU)")
+  parser.add_argument("--max-wait", type=float, default=900, help="Seconds to wait for the load (default: 900)")
+  parser.add_argument("--timeout", type=int, default=120, help="Seconds per render (default: 120)")
+  args = parser.parse_args()
+  if not wait_for_load(args.max_load, args.max_wait, 15):
+    print(f"load stayed above {args.max_load:.2f}; nothing measured", file=sys.stderr)
+    return 2
+  settings = config.load()[0]
+  paths = nvcat.find_paths(settings)
+  meta = metadata()
+  status = 0
+  rows = []
+  with tempfile.TemporaryDirectory(prefix="nvcat-highlighter-") as directory:
+    files = [path.resolve() for path in args.files]
+    if not files:
+      table = Path(directory) / f"table{TABLE_ROWS}.md"
+      table.write_text(table_document(TABLE_ROWS))
+      files = [HERE / f"{name}.md" for name in SAMPLES] + [table]
+    for path in files:
+      result = measure(path, args.runs, settings, paths, args.timeout)
+      indexed, stock = result[True], result[False]
+      if indexed["fact"] != "on":
+        print(f"{path.name}: the index is not active ({indexed['fact']}); nothing to compare", file=sys.stderr)
+        return 1
+      if len(indexed["digests"] | stock["digests"]) != 1:
+        print(f"{path.name}: output differs between the modes", file=sys.stderr)
+        status = 1
+      name = path.name if path.parent != HERE else f"benchmarks/{path.name}"
+      if path.name == f"table{TABLE_ROWS}.md":
+        name = f"{TABLE_ROWS}-row table (generated)"
+      lines = sum(1 for _ in open(path, "rb"))
+      change = (indexed["wall"] - stock["wall"]) / stock["wall"] * 100
+      row = (f"| {name} | {lines} | {indexed['states']:,} | {stock['ranges']} / {indexed['ranges']} "
+             f"| {stock['range']:.0f} | {indexed['range']:.0f} | {stock['wall']:.0f} | {indexed['wall']:.0f} "
+             f"| {change:+.0f}% |")
+      rows.append(row)
+      print(row, file=sys.stderr, flush=True)
+  text = block(rows, meta, args.runs)
+  print(text)
+  if args.update and status == 0:
+    current = DOC.read_text()
+    if START in current and END in current:
+      current = current[:current.index(START)] + text + current[current.index(END) + len(END):]
+    else:
+      current = current.rstrip("\n") + "\n\n## Tree-sitter highlighter index\n\n" + text + "\n"
+    DOC.write_text(current)
+    print(f"Updated {DOC.relative_to(ROOT)}", file=sys.stderr)
+  return status
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

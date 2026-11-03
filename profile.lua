@@ -167,6 +167,171 @@ vim.treesitter.start = function(buf, lang)
   return start_treesitter(buf, lang)
 end
 
+-- Neovim's Tree-sitter highlighter (0.12 and later) calls on_range_impl for each drawn line, and that visits
+-- every highlight state, one per tree in the window. Markdown injects a tree per inline span and code block,
+-- so a long table visits thousands of states per line, and under 1% of those visits touch the line. Narrow
+-- the list each call sees to the states whose root covers the range's rows, plus the first state starting
+-- after them, which on_range_impl needs to report where the next tree begins. The states keep their order,
+-- so extmark priorities and output are unchanged.
+--
+-- Neovim then also gets an accurate skip-ahead position. The stock loop includes trees that end above the
+-- line in its minimum, so the position it returns is behind the line and Neovim calls on_range again for the
+-- next one. Narrowed, the position is the next capture or tree start, and Neovim makes fewer calls.
+--
+-- These are private internals, so the patch checks each one it relies on and leaves the highlighter alone
+-- when one is missing. NVCAT_HIGHLIGHT_INDEX=0 turns it off. Returns "on", "off", or "unavailable: <reason>",
+-- shown as highlight_index in --timings.
+local SPAN_LIMIT = 64 -- Ranges spanning more rows than this keep the full list.
+
+local function upvalue(fn, wanted)
+  for slot = 1, math.huge do
+    local name, value = debug.getupvalue(fn, slot)
+    if name == nil then
+      return nil
+    end
+    if name == wanted then
+      return slot, value
+    end
+  end
+end
+
+local function uses(fn, names)
+  local ok, code = pcall(string.dump, fn)
+  if not ok then
+    return names[1]
+  end
+  for _, name in ipairs(names) do
+    if not code:find(name, 1, true) then
+      return name
+    end
+  end
+end
+
+function M.index_highlighter()
+  if vim.env.NVCAT_HIGHLIGHT_INDEX == "0" then
+    return "off"
+  end
+  local ok, H = pcall(require, "vim.treesitter.highlighter")
+  if not ok or type(H) ~= "table" then
+    return "unavailable: vim.treesitter.highlighter does not load"
+  end
+  if H._nvcat_indexed then
+    return "on"
+  end
+  for _, name in ipairs({ "_on_range", "prepare_highlight_states", "for_each_highlight_state" }) do
+    if type(H[name]) ~= "function" then
+      return "unavailable: TSHighlighter." .. name .. " is missing"
+    end
+  end
+  local slot, impl = upvalue(H._on_range, "on_range_impl")
+  if type(impl) ~= "function" then
+    return "unavailable: TSHighlighter._on_range does not call on_range_impl"
+  end
+  local missing = uses(impl, { "for_each_highlight_state", "tstree", "intercepts" })
+    or uses(H.for_each_highlight_state, { "_highlight_states" })
+    or uses(H.prepare_highlight_states, { "_highlight_states", "tstree" })
+  if missing then
+    return "unavailable: the highlighter no longer uses " .. missing
+  end
+
+  -- Per list of states, as prepare_highlight_states made it: the rows it covers and, built on first use,
+  -- the per-row state indexes and the states ordered by root start.
+  local bounds = setmetatable({}, { __mode = "k" })
+  local indexes = setmetatable({}, { __mode = "k" })
+  local prepare = H.prepare_highlight_states
+  H.prepare_highlight_states = function(self, srow, erow)
+    prepare(self, srow, erow)
+    if type(self._highlight_states) == "table" then
+      bounds[self._highlight_states] = { srow, erow }
+    end
+  end
+
+  local function build(states, srow, erow)
+    local rows, starts = {}, {}
+    for i, state in ipairs(states) do
+      local sr, sc, er = state.tstree:root():range()
+      for row = math.max(sr, srow), math.min(er, erow) do
+        local list = rows[row]
+        if not list then
+          list = {}
+          rows[row] = list
+        end
+        list[#list + 1] = i
+      end
+      starts[#starts + 1] = { sr, sc, i }
+    end
+    table.sort(starts, function(a, b)
+      if a[1] ~= b[1] then
+        return a[1] < b[1]
+      end
+      if a[2] ~= b[2] then
+        return a[2] < b[2]
+      end
+      return a[3] < b[3]
+    end)
+    return { rows = rows, starts = starts }
+  end
+
+  -- The states for rows br..er in their original order, or nil to keep the full list.
+  local function narrow(states, br, er)
+    local window = bounds[states]
+    if not window or br < window[1] or er > window[2] or er - br > SPAN_LIMIT then
+      return nil
+    end
+    local index = indexes[states]
+    if not index then
+      index = build(states, window[1], window[2])
+      indexes[states] = index
+    end
+    local chosen, seen = {}, {}
+    for row = br, er do
+      for _, i in ipairs(index.rows[row] or {}) do
+        if not seen[i] then
+          seen[i] = true
+          chosen[#chosen + 1] = i
+        end
+      end
+    end
+    -- The first state starting below the range (binary search over the starts).
+    local starts, low, high = index.starts, 1, #index.starts + 1
+    while low < high do
+      local middle = math.floor((low + high) / 2)
+      if starts[middle][1] > er then
+        high = middle
+      else
+        low = middle + 1
+      end
+    end
+    if starts[low] and not seen[starts[low][3]] then
+      chosen[#chosen + 1] = starts[low][3]
+    end
+    table.sort(chosen)
+    local narrowed = {}
+    for k, i in ipairs(chosen) do
+      narrowed[k] = states[i]
+    end
+    return narrowed
+  end
+
+  local function indexed(self, buf, br, bc, er, ec, ...)
+    local states = self._highlight_states
+    local narrowed = type(states) == "table" and narrow(states, br, er)
+    if not narrowed then
+      return impl(self, buf, br, bc, er, ec, ...)
+    end
+    self._highlight_states = narrowed
+    local done, row, col = pcall(impl, self, buf, br, bc, er, ec, ...)
+    self._highlight_states = states
+    if not done then
+      error(row, 0)
+    end
+    return row, col
+  end
+  debug.setupvalue(H._on_range, slot, indexed)
+  H._nvcat_indexed = true
+  return "on"
+end
+
 -- paths: settings from config.py runtime_paths(); every key except render_markdown may be nil.
 -- channel: the RPC channel for the screen grab, or nil for the pager.
 function M.setup(channel, paths)
@@ -193,6 +358,8 @@ function M.setup(channel, paths)
     package.path = paths.lua_path .. "/?.lua;" .. paths.lua_path .. "/?/init.lua;" .. package.path
   end
   start = lap("setup: runtimepath", start)
+  M.highlight_index = M.index_highlighter()
+  start = lap("setup: highlighter index", start)
   vim.cmd("highlight clear")
   if paths.theme then
     dofile(paths.theme).apply()
@@ -391,6 +558,7 @@ function M.info()
     error = vim.v.errmsg,
     filetype = M.filetype,
     engine = M.engine,
+    highlight_index = M.highlight_index,
     extmarks = #vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, {}),
     normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false }),
     timings = M.timings,
