@@ -5,23 +5,6 @@ Preserve that behavior while improving portability and preview latency.
 
 Reviewed: 2026-10-31
 
-## Portability and repeatable validation
-
-- [x] (p1) [refactor] Replace hardcoded editor, theme, plugin, and parser paths with explicit configuration and sensible defaults.
-- [x] (p2) [feature] Provide a sample appearance profile so another user can run the tool without this personal Neovim setup.
-- [x] (p1) [chore] Declare runtime and development dependencies; provide a reproducible installation method.
-- [x] (p1) [test] Turn the historical harnesses into tests that resolve paths from the checkout and use temporary output directories.
-- [x] (p2) [test] Add self-contained fixtures for Markdown structures, all supported code languages, aliases, Unicode, and long lines.
-- [x] (p2) [test] Retain checks for complete-document tails, stdin, unusual filenames, modelines, cancellation, and source immutability.
-- [x] (p2) [test] Exercise parser/query mismatches and missing dependencies with actionable errors.
-- [x] (p2) [test] Test released Neovim versions and declare the supported minimum.
-  0.11 (`tests/nvim-versions`); 0.10 cannot load current ABI-15 parsers and is refused in one line.
-- [x] **`--check` with any other option demands a file.** (p3) [bug] Only a bare `--check` (and `--check --all`)
-  bypasses argparse's required `file`, so `nvcat --check --nvim X` fails with a usage error.
-- [x] **Landlock allows writes to all of /tmp.** (p3) [refactor] `readonly.py` grants full write rights on
-  `/tmp` rather than only the per-run `nvcat-*` directory; scope the rule to that directory.
-- [x] (p2) [docs] Document the Linux/Landlock requirement and remove experiment-only helper entrypoints.
-
 ## CLI and fzf integration
 
 - [x] **Large tables hang rendering: `nvcat SYNTAX.md` times out.** (p1) [bug] Two causes, both fixed for
@@ -60,45 +43,6 @@ Reviewed: 2026-10-31
   though `nvcat-dispatch --print justfile` answers `just`. Fix in bat-dynamic (dotbare): ask
   `nvcat-dispatch --print "$1"` and exec `nvcat --all --filetype "$ft"` on a match. Done in bat-dynamic
   (~/.shell, uncommitted).
-
-## Replacing nvimpager
-
-- [ ] **Remove the old nvimpager on or after 2026-11-07.** (p2) [chore] With the rename to nvcat (0.10.0)
-  its aliases and scripts move to nvcat (`vimcat`/`vc`, `vimpage`, `vimtail`/`vt`, fzf-tab, lesspipe, tmux
-  `viewer.sh`); nvimpager stays installed for a week as a fallback. Then delete `~/.config/nvimpager`, `~/.shell/deploy/recipes/nvimpager.sh` and the
-  installed binary, and untrack them in dotbare.
-- [x] **Replace nvimpager uses and aliases with nvcat.** (p2) [chore] Depends on paging mode below.
-  `~/.shell/aliases/nvimpager.sh` defines `nvimpager` (wrapper), `vimcat`/`vc`, `vimpage`, `vimtail`/`vt`
-  (`vt.nvim-log`, `vt.syslog`, ...), `vc.syn FT`, and `vc.tmux-keys` (stdin with `ft=tmux`). Other callers:
-  `~/.shell/scripts/{vim-fzf-preview.sh,bat-list-preview,grc-list}`, `~/.shell/scripts/tools/vim-preview/`,
-  `~/.shell/zsh/{functions.zsh,plugin-configs/fzf-tab.zsh}`, `~/.shell/aliases/programs/hyperfine.sh`, and
-  tmux (`conf.d/{patterns,tools}.conf`, `scripts/{viewer,nvim-layout}.sh`; `@pattern_nvimpager` pane
-  detection must match the new command name). Then drop the deploy recipe
-  (`~/.shell/deploy/recipes/nvimpager.sh`, `catalog.tsv`). Mapping: `-l/--language` -> `--filetype`,
-  `-c` -> cat mode, `-p` -> paging mode. Gap: `-t/--tail` (follow a growing log) has no equivalent; decide
-  whether nvcat gets a follow mode or `vimtail` stays on nvimpager. Done in ~/.shell 0.33.0 (aliases in `aliases/nvcat.sh`, `vimtail` on
-  `nvcat -f`); only the deploy recipe and commented hyperfine examples still name nvimpager, for the removal
-  item above.
-- [x] **Add a paging mode through less.** (p2) [feature] Render the complete document (as `--all` does) and pipe
-  it into `${NVCAT_PAGER:-less -R}`; respect `$LESS`, and keep wide glyphs and RGB sequences intact.
-  Output over the row limit (1,000 since 0.8.0) should fall back to a clear error rather than a truncated page.
-- [x] **Embedded Neovim pager.** (p3) [feature] Done in 0.6.0 as the default `--pager nvim`: Neovim runs on the
-  terminal with the same profile (no RPC attach needed), read-only, with live render-markdown, search,
-  re-wrap on resize, and less-style keys; `--pager less` or `pager = "less"` keeps less.
-- [x] **Follow mode in the Neovim pager.** (p3) [feature] A tail/follow mode (`:checktime` on a timer, keep the
-  view at the end) to replace `vimtail`; see the nvimpager item above. Done: `-f`/`--follow` (inotify plus a
-  1 s poll). Not done: following with `--pager less`, which only ever receives finished output.
-- [x] **The Neovim pager relies on render-markdown internals for its first frame.** (p3) [refactor]
-  `profile.lua` calls `require("render-markdown.core.ui").updater.new(...):run()` so the first frame is
-  rendered; `update()` defers through `vim.schedule` and shows raw text once. Falls back to `update()` if the
-  internal changes; ask upstream for a synchronous render API.
-- [x] **Pager query warnings are untested.** (p3) [test] `M.pager` in `profile.lua` shows Tree-sitter query
-  warnings with `vim.notify`, but `tests/pager.bats` never breaks a query. Add a case with a broken
-  `queries/lua/highlights.scm` under `NVCAT_PARSER_DIR` and assert the notification and the regex fallback.
-- [x] **Auto paging by default.** (p2) [feature] Decided: `--paging=auto|always|never` (matching bat), default
-  `auto`: page with less when stdout is a terminal and the render is taller than the screen, otherwise cat.
-  Treat `$FZF_PREVIEW_COLUMNS`/`LINES` and a `$NVIM` parent (Neovim terminal buffers, where Telescope's
-  previewer gives the command a real TTY) as cat. `nvcat-dispatch` keeps forcing cat output.
 
 ## Performance
 
@@ -147,13 +91,6 @@ Reviewed: 2026-10-31
   README "Limits and fallback": no streaming, viewport time and memory by input size. Table-heavy input is
   not measured yet.
 
-## Releases
-
-- [x] **No version file.** (p2) [chore] The version exists only as tag `v0.1.0` and README text. Add a
-  top-level `VERSION` (and have `--version` read it) so bumps have one source of truth.
-- [x] **README states a stale version.** (p3) [docs] `README.md:8` says `0.6.0` / `v0.6.0` while `VERSION` is
-  `0.7.0`. Point at `VERSION` and `nvcat --version` instead of repeating the number, so bumps cannot drift.
-
 ## Optional support for other filetypes
 
 - [x] **SYNTAX.md has no regeneration script.** (p3) [chore] The Neovim-vs-bat comparison in `SYNTAX.md`
@@ -175,11 +112,18 @@ Reviewed: 2026-10-31
   Consider a SKIP list in gen-filetypes for known binary extensions.
 - [x] (p3) [feature] Evaluate whether Neovim-specific source rendering adds value beyond the current bat integration.
 - [x] (p3) [feature] If needed, add filetype detection or `--filetype`, on-demand parsers, and a general render-ready signal.
-- [ ] (p3) [perf] Compare startup, parsing time, and memory against the Markdown-only profile before enabling broader support.
+- [x] (p3) [perf] Compare startup, parsing time, and memory against the Markdown-only profile before enabling broader support.
+  Done 2026-11-03 against v0.1.0 ([PERFORMANCE.md](docs/PERFORMANCE.md#against-the-markdown-only-release)):
+  16-23 ms more fixed startup, all Python (script compilation, tomllib); same memory; 2-4x faster on
+  larger documents.
+- [ ] **Cut Python's fixed startup.** (p3) [perf] Python compiles the 1,010-line `nvcat` script on every run
+  (7 ms; a script gets no `.pyc`). Move the code into a module that the `nvcat` entry point imports, so it is
+  cached, and consider skipping tomllib when no config file exists. Worth about 5-10 ms per fzf preview.
 - [x] **systemd entry is unreachable through dispatch.** (p3) [feature] bat's INI syntax claims `*.service`,
   `*.timer` and the other unit extensions, so `gen-dispatch` sends them to bat. Neovim's systemd syntax is
   more specific; set `"prefer_over_bat": true` on the entry in `filetypes.json` if it should win.
-- [ ] **Rename the project now that it is not Markdown-only.** (p3) [chore] `nvcat` renders ~40 filetypes.
+- [x] **Rename the project now that it is not Markdown-only.** (p3) [chore] Done in 0.10.0 (mdpreview to
+  nvcat, repository `njhoffman/nvcat`, no compatibility aliases). `nvcat` renders ~40 filetypes.
   Candidates: `nvcat` (short, "cat through Neovim"), `nvim-cat` (matches the `nvcat` repo name),
   `nvpreview`, `vimprint`, `screencat` (describes the grid capture). Renaming touches the executable,
   `nvcat-dispatch`, the `nvcat_ready` RPC event, the `_G.nvcat` Lua module, the temp-dir prefix,
@@ -189,3 +133,70 @@ Reviewed: 2026-10-31
   `./gen-dispatch`, and `tests/dispatch.bats` fails until it does.
 - [x] **Render tests depend on this machine's Neovim setup.** (p2) [test] `tests/render.bats` needs the
   personal parsers and theme; skip it with a clear message when `find_paths()` reports missing dependencies.
+
+## Completed
+
+### Portability and repeatable validation (completed 2026-10-31)
+
+- [x] (p1) [refactor] Replace hardcoded editor, theme, plugin, and parser paths with explicit configuration and sensible defaults.
+- [x] (p2) [feature] Provide a sample appearance profile so another user can run the tool without this personal Neovim setup.
+- [x] (p1) [chore] Declare runtime and development dependencies; provide a reproducible installation method.
+- [x] (p1) [test] Turn the historical harnesses into tests that resolve paths from the checkout and use temporary output directories.
+- [x] (p2) [test] Add self-contained fixtures for Markdown structures, all supported code languages, aliases, Unicode, and long lines.
+- [x] (p2) [test] Retain checks for complete-document tails, stdin, unusual filenames, modelines, cancellation, and source immutability.
+- [x] (p2) [test] Exercise parser/query mismatches and missing dependencies with actionable errors.
+- [x] (p2) [test] Test released Neovim versions and declare the supported minimum.
+  0.11 (`tests/nvim-versions`); 0.10 cannot load current ABI-15 parsers and is refused in one line.
+- [x] **`--check` with any other option demands a file.** (p3) [bug] Only a bare `--check` (and `--check --all`)
+  bypasses argparse's required `file`, so `nvcat --check --nvim X` fails with a usage error.
+- [x] **Landlock allows writes to all of /tmp.** (p3) [refactor] `readonly.py` grants full write rights on
+  `/tmp` rather than only the per-run `nvcat-*` directory; scope the rule to that directory.
+- [x] (p2) [docs] Document the Linux/Landlock requirement and remove experiment-only helper entrypoints.
+
+### Replacing nvimpager (completed 2026-11-03)
+
+- [x] **Remove the old nvimpager on or after 2026-11-07.** (p2) [chore] Done 2026-11-03, early on request:
+  binary, man page, runtime, state, source checkout, `~/.config/nvimpager` (untracked in dotbare), the deploy
+  recipe and the remaining references (~/.shell 0.62.2, tmux 0.27.1). With the rename to nvcat (0.10.0)
+  its aliases and scripts move to nvcat (`vimcat`/`vc`, `vimpage`, `vimtail`/`vt`, fzf-tab, lesspipe, tmux
+  `viewer.sh`); nvimpager stays installed for a week as a fallback. Then delete `~/.config/nvimpager`, `~/.shell/deploy/recipes/nvimpager.sh` and the
+  installed binary, and untrack them in dotbare.
+- [x] **Replace nvimpager uses and aliases with nvcat.** (p2) [chore] Depends on paging mode below.
+  `~/.shell/aliases/nvimpager.sh` defines `nvimpager` (wrapper), `vimcat`/`vc`, `vimpage`, `vimtail`/`vt`
+  (`vt.nvim-log`, `vt.syslog`, ...), `vc.syn FT`, and `vc.tmux-keys` (stdin with `ft=tmux`). Other callers:
+  `~/.shell/scripts/{vim-fzf-preview.sh,bat-list-preview,grc-list}`, `~/.shell/scripts/tools/vim-preview/`,
+  `~/.shell/zsh/{functions.zsh,plugin-configs/fzf-tab.zsh}`, `~/.shell/aliases/programs/hyperfine.sh`, and
+  tmux (`conf.d/{patterns,tools}.conf`, `scripts/{viewer,nvim-layout}.sh`; `@pattern_nvimpager` pane
+  detection must match the new command name). Then drop the deploy recipe
+  (`~/.shell/deploy/recipes/nvimpager.sh`, `catalog.tsv`). Mapping: `-l/--language` -> `--filetype`,
+  `-c` -> cat mode, `-p` -> paging mode. Gap: `-t/--tail` (follow a growing log) has no equivalent; decide
+  whether nvcat gets a follow mode or `vimtail` stays on nvimpager. Done in ~/.shell 0.33.0 (aliases in `aliases/nvcat.sh`, `vimtail` on
+  `nvcat -f`); only the deploy recipe and commented hyperfine examples still name nvimpager, for the removal
+  item above.
+- [x] **Add a paging mode through less.** (p2) [feature] Render the complete document (as `--all` does) and pipe
+  it into `${NVCAT_PAGER:-less -R}`; respect `$LESS`, and keep wide glyphs and RGB sequences intact.
+  Output over the row limit (1,000 since 0.8.0) should fall back to a clear error rather than a truncated page.
+- [x] **Embedded Neovim pager.** (p3) [feature] Done in 0.6.0 as the default `--pager nvim`: Neovim runs on the
+  terminal with the same profile (no RPC attach needed), read-only, with live render-markdown, search,
+  re-wrap on resize, and less-style keys; `--pager less` or `pager = "less"` keeps less.
+- [x] **Follow mode in the Neovim pager.** (p3) [feature] A tail/follow mode (`:checktime` on a timer, keep the
+  view at the end) to replace `vimtail`; see the nvimpager item above. Done: `-f`/`--follow` (inotify plus a
+  1 s poll). Not done: following with `--pager less`, which only ever receives finished output.
+- [x] **The Neovim pager relies on render-markdown internals for its first frame.** (p3) [refactor]
+  `profile.lua` calls `require("render-markdown.core.ui").updater.new(...):run()` so the first frame is
+  rendered; `update()` defers through `vim.schedule` and shows raw text once. Falls back to `update()` if the
+  internal changes; ask upstream for a synchronous render API.
+- [x] **Pager query warnings are untested.** (p3) [test] `M.pager` in `profile.lua` shows Tree-sitter query
+  warnings with `vim.notify`, but `tests/pager.bats` never breaks a query. Add a case with a broken
+  `queries/lua/highlights.scm` under `NVCAT_PARSER_DIR` and assert the notification and the regex fallback.
+- [x] **Auto paging by default.** (p2) [feature] Decided: `--paging=auto|always|never` (matching bat), default
+  `auto`: page with less when stdout is a terminal and the render is taller than the screen, otherwise cat.
+  Treat `$FZF_PREVIEW_COLUMNS`/`LINES` and a `$NVIM` parent (Neovim terminal buffers, where Telescope's
+  previewer gives the command a real TTY) as cat. `nvcat-dispatch` keeps forcing cat output.
+
+### Releases (completed 2026-10-31)
+
+- [x] **No version file.** (p2) [chore] The version exists only as tag `v0.1.0` and README text. Add a
+  top-level `VERSION` (and have `--version` read it) so bumps have one source of truth.
+- [x] **README states a stale version.** (p3) [docs] `README.md:8` says `0.6.0` / `v0.6.0` while `VERSION` is
+  `0.7.0`. Point at `VERSION` and `nvcat --version` instead of repeating the number, so bumps cannot drift.

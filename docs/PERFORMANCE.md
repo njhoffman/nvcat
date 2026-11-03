@@ -95,6 +95,30 @@ Recorded 2026-11-01T01:37Z, version 0.10.1 (33cdf70-dirty), load 2.08, NVIM v0.1
 
 <!-- filetypes:end -->
 
+## Against the Markdown-only release
+
+v0.1.0 (mdpreview, Markdown only) against 0.15.0, measured 2026-11-03 at a load of 1.3-1.7 with the same
+Neovim, parsers, theme and render-markdown. 100 columns; milliseconds, 40 interleaved runs per command
+(minimum and median); a viewport is `--lines 40`, complete output `--all`.
+
+| Document | Mode | v0.1.0 min / median | 0.15.0 min / median |
+|---|---|---:|---:|
+| 3-line Markdown | viewport | 82 / 111 | 98 / 134 |
+| 3-line Markdown | complete | 99 / 109 | 116 / 128 |
+| benchmarks/small.md | viewport | 236 / 265 | 254 / 294 |
+| benchmarks/small.md | complete | 264 / 326 | 269 / 319 |
+
+On larger documents 0.15.0 is 2-4 times faster (hyperfine medians, 7 runs): medium.md complete 1370 against
+662, large.md complete 4649 against 1072, large.md viewport 1427 against 412. Peak memory is the same within
+2 MiB (Neovim 17 against 19 MiB on the 3-line file, 65 against 66 MiB on large.md).
+
+Support for other filetypes costs Markdown 16-23 ms of fixed startup, all of it in Python: Neovim's own run
+(spawn to exit, traced) is 76-79 ms in both. The parts: compiling the 1,010-line `nvcat` script, which Python
+does on every start because a script gets no `.pyc` (7 ms against 2 ms for v0.1.0's 319 lines);
+importing tomllib and reading the config (4 ms); json and the filetype tables (2-3 ms). The filetype
+detection itself is under 2 ms. None of this is per-filetype work; the config file and the larger CLI would
+cost the same in a Markdown-only nvcat.
+
 ## Tree-sitter highlighter index
 
 For each drawn line, Neovim's Tree-sitter highlighter (`on_range_impl` in

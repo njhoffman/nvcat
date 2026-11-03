@@ -11,7 +11,6 @@
 
 The renderer starts Neovim with its own init file and reads selected appearance modules from the editor config.
 Do not replace that profile with the full interactive editor startup: it would load unrelated plugins and state.
-The older nvimpager configuration remains a separate working setup.
 
 ## Parser and query compatibility
 

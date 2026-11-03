@@ -6,6 +6,14 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-11-03
+
+### Changed
+
+- docs/PERFORMANCE.md compares 0.15.0 with the Markdown-only v0.1.0: 16-23 ms more fixed startup (Python
+  only), the same memory, and 2-4 times faster renders of larger documents.
+- The nvimpager configuration is gone, and docs/DEVELOPMENT.md no longer mentions it.
+
 ## [0.15.0] - 2026-11-03
 
 ### Changed
