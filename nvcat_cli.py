@@ -271,10 +271,17 @@ def nvim_command(executable, *extra):
   return [executable, *extra, "--noplugin", "-n", "-i", "NONE", "-u", str(ROOT / "profile.lua")]
 
 
+# Neovim's underline attributes and their SGR codes, in the order one is chosen when a highlight sets several.
+UNDERLINES = {"underline": "4", "underdouble": "4:2", "undercurl": "4:3", "underdotted": "4:4",
+              "underdashed": "4:5"}
+
+
 class Renderer:
-  def __init__(self, executable, paths, temporary, width, height, timeout, timings=None, syntax="auto"):
+  def __init__(self, executable, paths, temporary, width, height, timeout, timings=None, syntax="auto",
+               hyperlinks=True):
     self.timings = timings or Timings()
     self.syntax = syntax
+    self.hyperlinks = hyperlinks  # OSC 8 links for cells whose highlight carries a url (Markdown links)
     self.process = None
     self.errors = []
     self.stderr = tempfile.TemporaryFile(dir=temporary)
@@ -477,38 +484,54 @@ class Renderer:
       while end:
         text, highlight = row[end - 1]
         attrs = self.highlights.get(highlight, {})
-        if text != " " or any(attrs.get(key) for key in
-                               ["reverse", "underline", "undercurl", "strikethrough"]) or "background" in attrs:
+        if text != " " or any(attrs.get(key) for key in ["reverse", "strikethrough", *UNDERLINES]) \
+            or "background" in attrs:
           break
         end -= 1
-      current = None
+      current = link = None
       for text, highlight in row[:end]:
         if not text:
           continue  # Continuation cell of a wide glyph; the glyph itself occupies both columns.
         if highlight != current:
           if highlight not in sequences:
-            attrs = self.highlights.get(highlight, {})
-            codes = ["0"]
-            codes += [str(value) for name, value in [("bold", 1), ("italic", 3), ("reverse", 7),
-                                                   ("strikethrough", 9)] if attrs.get(name)]
-            if any(attrs.get(key) for key in ["underline", "undercurl", "underdouble", "underdotted", "underdashed"]):
-              codes.append("4")
-            foreground = attrs.get("foreground", self.defaults[0])
-            if foreground >= 0:
-              codes.append(f"38;2;{foreground >> 16 & 255};{foreground >> 8 & 255};{foreground & 255}")
-            else:
-              codes.append("39")
-            background = attrs.get("background")
-            if background is None or background < 0:
-              codes.append("49")
-            else:
-              codes.append(f"48;2;{background >> 16 & 255};{background >> 8 & 255};{background & 255}")
-            sequences[highlight] = "\x1b[" + ";".join(codes) + "m"
+            sequences[highlight] = self.sgr(self.highlights.get(highlight, {}))
+          url = self.highlights.get(highlight, {}).get("url") if self.hyperlinks else None
+          if url != link:
+            output.append(f"\x1b]8;;{url or ''}\x1b\\")
+            link = url
           output.append(sequences[highlight])
           current = highlight
         output.append(text)
+      if link:
+        output.append("\x1b]8;;\x1b\\")
       output.append("\x1b[0m\n")
     return "".join(output).encode("utf-8")
+
+  def sgr(self, attrs):
+    """The SGR sequence for one of Neovim's highlight definitions: a full reset, then every attribute.
+
+    Underline styles and the underline color use colon subparameters (4:3, 58:2::R:G:B), which terminals
+    without them read as a plain underline or ignore, rather than misreading the color as other attributes."""
+    codes = ["0"]
+    codes += [str(value) for name, value in [("bold", 1), ("italic", 3), ("reverse", 7),
+                                           ("strikethrough", 9)] if attrs.get(name)]
+    style = next((code for name, code in UNDERLINES.items() if attrs.get(name)), None)
+    if style:
+      codes.append(style)
+      special = attrs.get("special", -1)
+      if special >= 0:
+        codes.append(f"58:2::{special >> 16 & 255}:{special >> 8 & 255}:{special & 255}")
+    foreground = attrs.get("foreground", self.defaults[0])
+    if foreground >= 0:
+      codes.append(f"38;2;{foreground >> 16 & 255};{foreground >> 8 & 255};{foreground & 255}")
+    else:
+      codes.append("39")
+    background = attrs.get("background")
+    if background is None or background < 0:
+      codes.append("49")
+    else:
+      codes.append(f"48;2;{background >> 16 & 255};{background >> 8 & 255};{background & 255}")
+    return "\x1b[" + ";".join(codes) + "m"
 
   def close(self):
     with self.timings.phase("close"):
@@ -598,6 +621,20 @@ def should_page(mode, complete, output):
   if not wants_pager(mode, complete):
     return False
   return mode == "always" or output.count(b"\n") > shutil.get_terminal_size().lines
+
+
+HYPERLINKS = ["auto", "always", "never"]
+
+
+def hyperlinks(mode, pager, paging):
+  """Whether to emit OSC 8 hyperlinks. auto: yes, unless the output may go to a pager command other than less
+  (less passes them on with -R since version 566; another pager may print them as text)."""
+  mode = mode or "auto"
+  if mode not in HYPERLINKS:
+    raise PreviewError(f"hyperlinks must be one of {', '.join(HYPERLINKS)}, not {mode!r}")
+  if mode != "auto":
+    return mode == "always"
+  return paging == "never" or pager == "nvim" or os.path.basename(pager[0]) == "less"
 
 
 def resolve_pager(value):
@@ -793,6 +830,9 @@ def main():
                       "the last line (like less +F). Needs the nvim pager, a terminal and a file")
   parser.add_argument("--pager", help="nvim (built-in Neovim pager), less (less -R), or a pager command line; "
                       "defaults to the configured pager (NVCAT_PAGER), then nvim")
+  parser.add_argument("--hyperlinks", choices=HYPERLINKS,
+                      help="OSC 8 hyperlinks for Markdown links. auto (default): on, except when a pager command "
+                      "other than less may show the output; defaults to the configured hyperlinks (NVCAT_HYPERLINKS)")
   parser.add_argument("--budget", type=float, default=5.0,
                       help="Seconds allowed for complete output before falling back (default: 5; 0 disables)")
   parser.add_argument("--fallback", choices=["bat", "none"], default="bat",
@@ -878,6 +918,7 @@ def run(args, timings):
   if args.nvim:
     settings["nvim"] = args.nvim
   pager = resolve_pager(args.pager or settings["pager"])
+  links = hyperlinks(args.hyperlinks or settings["hyperlinks"], pager, args.paging)
   width = args.columns or args.fzf_columns or shutil.get_terminal_size().columns
   fzf_lines = args.fzf_lines
   all_rows = args.all or (args.lines is None and not fzf_lines and args.start_line == 1)
@@ -943,7 +984,8 @@ def run(args, timings):
         lines = shutil.get_terminal_size().lines
         renderer = None
         try:
-          renderer = Renderer(settings["nvim"], paths, temporary, width, lines, args.timeout, timings, args.syntax)
+          renderer = Renderer(settings["nvim"], paths, temporary, width, lines, args.timeout, timings, args.syntax,
+                              links)
           output, info = renderer.render(path, width, lines, 1, False, filetype)
         except (TimedOut, Unsupported) as error:
           if renderer:
@@ -970,7 +1012,8 @@ def run(args, timings):
     renderer = None
     fallback = False
     try:
-      renderer = Renderer(settings["nvim"], paths, temporary, width, height, args.timeout, timings, args.syntax)
+      renderer = Renderer(settings["nvim"], paths, temporary, width, height, args.timeout, timings, args.syntax,
+                          links)
       output, _ = renderer.render(path, width, height, args.start_line, all_rows, filetype, args.budget)
     except TooLarge as error:
       if renderer:

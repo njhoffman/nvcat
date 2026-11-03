@@ -40,7 +40,9 @@ The bats suite (`just test`) covers what the initial experiments checked, with s
 Unicode through Neovim's terminal emulator (`tests/helpers/roundtrip.py`), finite stdin, literal filenames,
 modelines, errors, SIGTERM/SIGINT/SIGKILL cleanup, source immutability, the Landlock sandbox, per-language
 code-token colors (`tests/helpers/languages.py`, which reads the theme's String color instead of hardcoding it),
-and a real fzf session (`tests/helpers/fzf_session.py`). The original harnesses and captures were removed.
+the reference documents' features at 40, 80 and 120 columns with output cell widths
+(`tests/helpers/cells.py`), underline styles and hyperlinks, and a real fzf session
+(`tests/helpers/fzf_session.py`). The original harnesses and captures were removed.
 
 ## Profiling
 

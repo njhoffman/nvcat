@@ -174,6 +174,20 @@ The pager is chosen by `--pager`, else the `pager` config key (`NVCAT_PAGER`), e
 
 Ctrl-C is left to the pager.
 
+### Underlines and hyperlinks
+
+Besides colors, nvcat keeps bold, italic, reverse, strikethrough, and the underline styles with their color.
+Curly, double, dotted and dashed underlines (spelling and diagnostic highlights, for instance) are written as
+`4:3`, `4:2`, `4:4` and `4:5`, and an underline color as `58:2::R:G:B`. These colon forms are standard; a
+terminal without them shows a plain underline or ignores them.
+
+Markdown inline links and autolinks become OSC 8 hyperlinks, which terminals such as kitty, WezTerm, foot,
+iTerm2, GNOME Terminal and Windows Terminal make clickable; less (566 and later, with `-R`) and fzf previews
+(0.54 and later) pass them on. Reference links stay plain text: Neovim's highlights query attaches no URL to
+them. `--hyperlinks` (or the `hyperlinks` config key, `NVCAT_HYPERLINKS`) chooses: `auto` (the default) emits
+them unless the output may go to a pager command other than less, which might print them as text; `always`
+and `never` do what they say. In the `nvim` pager, Neovim emits the links itself.
+
 ### Limits and fallback
 
 When a render reaches one of these limits, the file is shown with bat instead (`--language=markdown` for
@@ -334,7 +348,9 @@ filetype through the configured Neovim), `pager.bats` (the built-in Neovim pager
 `paging.bats` (external pagers), `fallback.bats` (every limit), `config.bats`, `timings.bats` (`--timings`,
 `--syntax`), `dependencies.bats` (query mismatches, missing dependencies), `inputs.bats` (extension case,
 symbolic links, unreadable and empty inputs), `version.bats`,
-`benchmarks.bats` (the benchmark scripts), `robustness.bats`
+`benchmarks.bats` (the benchmark scripts), `attributes.bats` (underline styles, hyperlinks),
+`reference.bats` (the reference documents at 40, 80 and 120 columns; wide, combining and emoji cells),
+`robustness.bats`
 (tails, viewports, filenames, stdin, modelines, errors, terminal round trip, signal cleanup, immutability,
 sandbox), `languages.bats` (code-fence colors), and `fzf.bats` (a real fzf session; skipped without fzf).
 Python helpers live in `tests/helpers/`; fixtures in `tests/fixtures/`. Tests that need a configured theme

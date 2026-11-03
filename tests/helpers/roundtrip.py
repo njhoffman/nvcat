@@ -12,14 +12,14 @@ import tempfile
 
 from common import load_nvcat
 
-SGR = re.compile(rb"\x1b\[[0-9;:]*m")
+ESCAPES = re.compile(rb"\x1b\[[0-9;:]*m|\x1b\]8;[^\x1b]*\x1b\\")  # SGR and OSC 8 hyperlinks
 module = load_nvcat()
 path, end_marker = str(Path(sys.argv[1]).resolve()), sys.argv[2]
 with tempfile.TemporaryDirectory(prefix="nvcat-roundtrip-") as work:
   renderer = module.Renderer(shutil.which("nvim"), module.find_paths(), work, 80, 24, 8)
   try:
     output, _ = renderer.render(path, 80, 24, all_rows=True)
-    expected = [line.rstrip() for line in SGR.sub(b"", output).decode().splitlines()]
+    expected = [line.rstrip() for line in ESCAPES.sub(b"", output).decode().splitlines()]
     renderer.request("nvim_exec_lua", """local output = ...
       local buf = vim.api.nvim_create_buf(false, true)
       vim.api.nvim_win_set_buf(0, buf)

@@ -381,6 +381,9 @@ function M.setup(channel, paths)
   config.ignore = function(buf)
     return M.syntax == "regex" or not parser_loads("markdown") or (ignore ~= nil and ignore(buf) or false)
   end
+  -- Anti-conceal shows the cursor line's raw Markdown, and the cursor sits on the first row shown: off on every
+  -- path, whatever the options file says.
+  config.anti_conceal = { enabled = false }
   if M.channel then
     config.on = {
       render = function(context)
@@ -390,10 +393,8 @@ function M.setup(channel, paths)
       end,
     }
   else
-    -- Pager: render in every mode, and never reveal the raw Markdown of the cursor line. M.pager() waits for
-    -- the first on.render before the screen is drawn.
+    -- Pager: render in every mode. M.pager() waits for the first on.render before the screen is drawn.
     config.render_modes = true
-    config.anti_conceal = { enabled = false }
     config.on = {
       render = function()
         M.pager_rendered = true

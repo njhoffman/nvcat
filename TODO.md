@@ -56,6 +56,11 @@ Reviewed: 2026-11-03
 - [ ] **examples/fzf-files without a generated router.** (p3) [bug] Since 0.16.0 a checkout has no
   `nvcat-dispatch` until `just install` or `just dispatch`; the example then shows a "No such file" error
   in every preview. Check for it at start and print the command to run (or run `./gen-dispatch`).
+- [ ] **`--lines 1` always times out.** (p2) [bug] Neovim's smallest grid is two rows ('lines' minimum 2), so
+  `wait_ready` waits for a one-row frame that never comes and the render falls back to bat after `--timeout`
+  (any file; also in 0.18.0). A one-line fzf preview window hits it. Attach and resize with at least two rows
+  and emit the requested count, with a test for `--lines 1`.
+
 ## Performance
 
 - [x] **Track Markdown benchmark averages.** (p2) [perf] `benchmarks/run` records small/medium/large/code samples
@@ -108,9 +113,18 @@ Reviewed: 2026-11-03
 
 ## Rendering fidelity and larger documents
 
-- [ ] (p3) [test] Compare all reference features at multiple widths, including footnotes, wiki links, HTML comments, and code labels.
+- [x] (p3) [test] Compare all reference features at multiple widths, including footnotes, wiki links, HTML comments, and code labels.
+  Done in 0.21.0: `tests/reference.bats` at 40, 80 and 120 columns with render-markdown's defaults, plus
+  no line wider than the output. It found the cursor row shown as raw Markdown under render-markdown's
+  default anti-conceal (fixed). Code labels past a `code.min_width` wider than the output are cut off, as
+  in Neovim.
 - [ ] (p3) [test] Qualify transparent backgrounds, combining characters, emoji, and wide glyphs in more terminal/font combinations.
-- [ ] (p3) [feature] Preserve additional underline attributes and assess terminal hyperlink support.
+  0.21.0 tests the output cells (`tests/reference.bats`: one emission per wide glyph, combining marks on
+  their base, a wide glyph wrapping whole, `49` for the default background). Left: looking at the output in
+  each terminal and font, which needs a person; record the combinations in the README.
+- [x] (p3) [feature] Preserve additional underline attributes and assess terminal hyperlink support.
+  Done in 0.21.0: underline styles as `4:2`-`4:5` with `58:2::R:G:B` colors, and OSC 8 links from the
+  `url` Neovim attaches to Markdown links (`--hyperlinks auto|always|never`). less 668 passes both through.
 - [ ] (p3) [feature] Investigate complete-document export beyond one enlarged grid without duplicating or skipping virtual rows.
 - [x] (p2) [docs] Define memory and parsing limits before claiming streaming or large-file support.
   README "Limits and fallback": no streaming, viewport time and memory by input size. Table-heavy input is

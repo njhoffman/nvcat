@@ -33,3 +33,8 @@
 # any other value is a pager command line that reads ANSI text on stdin. NVCAT_PAGER overrides it, and
 # --pager overrides both. Default: nvim.
 # pager = "less"
+
+# OSC 8 hyperlinks for Markdown links (clickable in terminals that support them). auto turns them off when
+# a pager command other than less may show the output; NVCAT_HYPERLINKS and --hyperlinks override.
+# Default: auto.
+# hyperlinks = "never"

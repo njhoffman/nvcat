@@ -6,6 +6,26 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-03
+
+### Added
+
+- Markdown links are clickable: inline links and autolinks become OSC 8 hyperlinks in terminals that
+  support them. `--hyperlinks auto|always|never` (config key `hyperlinks`, `NVCAT_HYPERLINKS`); `auto`, the
+  default, leaves them out when a pager command other than less may show the output.
+- Curly, double, dotted and dashed underlines keep their style (SGR `4:3`, `4:2`, `4:4`, `4:5`), and an
+  underline color is kept (`58:2::R:G:B`); before, every style was a plain underline in the text color.
+- Tests of the reference documents at 40, 80 and 120 columns (footnotes, wiki links, HTML comments, callouts,
+  code labels, tables, and no line wider than the output), and of wide, emoji and combining cells and the
+  transparent default background.
+
+### Fixed
+
+- With render-markdown's default options, the first row of every render and viewport showed its raw Markdown
+  (`# Heading`): anti-conceal revealed the cursor line. It is now off for printed output too, not only in the
+  `nvim` pager. Options files that already turned it off saw no difference.
+- Trailing blank cells with a double, dotted or dashed underline were trimmed from the end of a row.
+
 ## [0.20.0] - 2026-11-03
 
 ### Changed

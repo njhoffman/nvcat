@@ -22,6 +22,7 @@ KEYS = {
   "markdown_options": ("path", "Lua file that calls require('render-markdown').setup(opts) or returns opts "
                                "(optional; render-markdown defaults otherwise)"),
   "pager": ("string", "Pager for complete output: nvim (built in), less (less -R), or a command line"),
+  "hyperlinks": ("string", "OSC 8 hyperlinks for Markdown links: auto, always or never"),
 }
 OPTIONAL = {"icons", "parser_dir", "lua_path", "theme", "colorscheme", "markdown_options"}
 
@@ -57,6 +58,7 @@ def defaults():
     "plugin_dirs": [data / "nvim/lazy", data / "nvim/site/pack/*/start", data / "nvim/site/pack/*/opt"],
     "parser_dir": data / "nvim/site",
     "pager": "nvim",
+    "hyperlinks": "auto",
   }
 
 
@@ -120,6 +122,8 @@ def problems(settings):
   render_markdown = settings["render_markdown"]
   if not render_markdown or not (render_markdown / "lua/render-markdown").is_dir():
     errors.append("render-markdown.nvim not found (set render_markdown, or install it under plugin_dirs)")
+  if settings["hyperlinks"] not in (None, "auto", "always", "never"):
+    errors.append(f"hyperlinks: {settings['hyperlinks']!r} is not auto, always or never")
   for key in sorted(OPTIONAL):
     value = settings[key]
     if isinstance(value, Path) and not value.exists():

@@ -4,7 +4,7 @@ Extended syntax: footnotes[^1], wiki links [[Some Page]], HTML comments, and cal
 
 [^1]: The footnote text.
 
-<!-- an HTML comment that should not render -->
+<!-- REFERENCE_HIDDEN_COMMENT: the comment text never shows; render-markdown may draw a marker -->
 
 > [!NOTE]
 > A note callout.
