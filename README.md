@@ -246,9 +246,13 @@ For a mixed-file preview, use `nvcat-dispatch`: it sends Markdown and the other 
 [SYNTAX.md](SYNTAX.md) to nvcat and everything else to bat, and falls back to bat if nvcat fails:
 
 ```sh
-fzf --preview 'nvcat-dispatch {}' --preview-window 'right:75%:nowrap' --bind 'resize:refresh-preview'
-nvcat-dispatch --print path/to/file   # print the filetype; exit 1 when bat would handle it
+fzf --preview 'nvcat-dispatch -- {}' --preview-window 'right:75%:nowrap' --bind 'resize:refresh-preview'
+nvcat-dispatch --print -- path/to/file   # print the filetype; exit 1 when bat would handle it
 ```
+
+`--` ends the options, so a file named `--print` or starting with `-` is still a file.
+[examples/fzf-files](examples/fzf-files) is a complete file picker built this way (`examples/fzf-files DIR`):
+fd or find lists the files, the preview follows resizes, and `ctrl-/` moves or hides it.
 
 For a glob Neovim assigns by content, `--print` prints `auto` and the file goes to `nvcat --filetype auto`,
 which costs a Neovim start before bat takes over when the content is not one of nvcat's filetypes.

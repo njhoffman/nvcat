@@ -44,12 +44,13 @@ Reviewed: 2026-10-31
 - [x] **less shows Nerd Font icons as `<U+F0CA3>`.** (p1) [bug] less treats Private Use Area code points as
   non-printable; `page()` now sets `LESSUTFCHARDEF` for those ranges unless the user has one.
 - [x] (p2) [feature] Add `--version` and keep its output consistent with the release tag.
-- [ ] (p3) [docs] Provide a checked-in mixed-file fzf integration example with bat fallback and resize refresh.
+- [x] (p3) [docs] Provide a checked-in mixed-file fzf integration example with bat fallback and resize refresh.
+  `examples/fzf-files`.
 - [x] (p2) [test] Verify Markdown aliases, uppercase extensions, symlinks, empty files, and renderer failures.
 - [x] (p2) [bug] Review selection parsing for filenames containing literal pipes or display separators.
   nvcat parses no selection; fzf quotes `{}`. A leading `-` needed `--` in the README example, and grep
   matches are split on a tab instead of `:` (`tests/fzf.bats`).
-- [ ] **nvcat-dispatch takes a file named `--print` as its flag.** (p3) [bug] `gen-dispatch` checks
+- [x] **nvcat-dispatch takes a file named `--print` as its flag.** (p3) [bug] `gen-dispatch` checks
   `$1 == --print` and accepts no `--`; have it skip a leading `--` and document `nvcat-dispatch -- {}`.
 - [x] (p2) [docs] Clarify full-document versus viewport behavior and how scrolling interacts with each mode.
 - [x] (p2) [feature] Define readable fallbacks for input, row, and timeout limits.
@@ -66,7 +67,7 @@ Reviewed: 2026-10-31
   its aliases and scripts move to nvcat (`vimcat`/`vc`, `vimpage`, `vimtail`/`vt`, fzf-tab, lesspipe, tmux
   `viewer.sh`); nvimpager stays installed for a week as a fallback. Then delete `~/.config/nvimpager`, `~/.shell/deploy/recipes/nvimpager.sh` and the
   installed binary, and untrack them in dotbare.
-- [ ] **Replace nvimpager uses and aliases with nvcat.** (p2) [chore] Depends on paging mode below.
+- [x] **Replace nvimpager uses and aliases with nvcat.** (p2) [chore] Depends on paging mode below.
   `~/.shell/aliases/nvimpager.sh` defines `nvimpager` (wrapper), `vimcat`/`vc`, `vimpage`, `vimtail`/`vt`
   (`vt.nvim-log`, `vt.syslog`, ...), `vc.syn FT`, and `vc.tmux-keys` (stdin with `ft=tmux`). Other callers:
   `~/.shell/scripts/{vim-fzf-preview.sh,bat-list-preview,grc-list}`, `~/.shell/scripts/tools/vim-preview/`,
@@ -75,7 +76,9 @@ Reviewed: 2026-10-31
   detection must match the new command name). Then drop the deploy recipe
   (`~/.shell/deploy/recipes/nvimpager.sh`, `catalog.tsv`). Mapping: `-l/--language` -> `--filetype`,
   `-c` -> cat mode, `-p` -> paging mode. Gap: `-t/--tail` (follow a growing log) has no equivalent; decide
-  whether nvcat gets a follow mode or `vimtail` stays on nvimpager.
+  whether nvcat gets a follow mode or `vimtail` stays on nvimpager. Done in ~/.shell 0.33.0 (aliases in `aliases/nvcat.sh`, `vimtail` on
+  `nvcat -f`); only the deploy recipe and commented hyperfine examples still name nvimpager, for the removal
+  item above.
 - [x] **Add a paging mode through less.** (p2) [feature] Render the complete document (as `--all` does) and pipe
   it into `${NVCAT_PAGER:-less -R}`; respect `$LESS`, and keep wide glyphs and RGB sequences intact.
   Output over the row limit (1,000 since 0.8.0) should fall back to a clear error rather than a truncated page.

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pick a file with fzf and a mixed preview: nvcat-dispatch renders Markdown and the other filetypes nvcat
+# handles with nvcat, and everything else (or anything nvcat fails on) with bat. The preview re-renders when
+# the terminal is resized, because Neovim does the wrapping. Prints the chosen file.
+#
+# Usage: examples/fzf-files [DIR]
+#
+# Keys: ctrl-/ cycles the preview between right, bottom and hidden; shift-up/down scroll it.
+# NVCAT_DISPATCH overrides the router (default: the nvcat-dispatch of this checkout); the files come from fd
+# (or fdfind), else find, without .git.
+
+set -euo pipefail
+
+here=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+dispatch=${NVCAT_DISPATCH:-$here/nvcat-dispatch}
+cd "${1:-.}"
+
+list_files() {
+  local fd
+  fd=$(command -v fd || command -v fdfind || true)
+  if [[ -n $fd ]]; then
+    "$fd" --type f --hidden --exclude .git
+  else
+    find . -type f -not -path '*/.git/*' | sed 's|^\./||'
+  fi
+}
+
+# fzf quotes {} for the shell; -- keeps a name starting with - (or named --print) from reading as an option.
+list_files | fzf \
+  --preview "$(printf %q "$dispatch") -- {}" \
+  --preview-window 'right:60%:nowrap' \
+  --bind 'resize:refresh-preview' \
+  --bind 'ctrl-/:change-preview-window(down,50%|hidden|right,60%)' \
+  --bind 'shift-up:preview-up,shift-down:preview-down'

@@ -6,6 +6,18 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-03
+
+### Added
+
+- `examples/fzf-files [DIR]`: an fzf file picker with the mixed nvcat/bat preview, resize refresh and a
+  `ctrl-/` preview toggle, tested in `tests/fzf.bats`.
+
+### Fixed
+
+- `nvcat-dispatch` accepts `--` before the file (`nvcat-dispatch -- {}`, `nvcat-dispatch --print -- FILE`), so
+  a file named `--print` is routed instead of read as the flag.
+
 ## [0.13.0] - 2026-11-03
 
 ### Added

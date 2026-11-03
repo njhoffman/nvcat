@@ -16,7 +16,7 @@ setup() {
 }
 
 route() {
-  run "$DISPATCH" --print "$1"
+  run "$DISPATCH" --print "$@"
 }
 
 @test "generated script is current with filetypes.json and bat" {
@@ -105,6 +105,23 @@ print(" ".join(e["filetype"] for e in filetypes.load()))' "$ROOT")
   cp "$FIXTURES/markdown/sample.md" "$BATS_TEST_TMPDIR/-a b.md"
   NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat run "$DISPATCH" "$BATS_TEST_TMPDIR/-a b.md"
   [ "$output" = "nvcat --all --paging=never --budget=2 --filetype markdown -- $BATS_TEST_TMPDIR/-a b.md" ]
+}
+
+@test "-- ends the options, so a file can be named --print or --" {
+  cd "$BATS_TEST_TMPDIR"
+  cp "$FIXTURES/markdown/sample.md" ./--print
+  NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat run "$DISPATCH" -- --print
+  [ "$status" -eq 0 ]
+  [ "$output" = "bat --color=always --paging=never -- --print" ]
+  route -- "$FIXTURES/tmux/.tmux.conf"
+  [ "$output" = tmux ]
+  run "$DISPATCH" --print -- --print
+  [ "$status" -eq 1 ]
+  cp "$FIXTURES/markdown/sample.md" ./--
+  run "$DISPATCH" --print -- --
+  [ "$status" -eq 1 ]
+  run "$DISPATCH" -- a b
+  [ "$status" -eq 2 ]
 }
 
 @test "routed files call nvcat with the filetype" {

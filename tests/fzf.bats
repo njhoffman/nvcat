@@ -44,7 +44,7 @@ setup_names() {
   setup_names
   for name in "${names[@]}"; do
     printf '%s\n' "$name" > "$work/list"
-    run_fzf "$work/list" "NVCAT=$BATS_TEST_DIRNAME/../nvcat $BATS_TEST_DIRNAME/../nvcat-dispatch {}"
+    run_fzf "$work/list" "NVCAT=$BATS_TEST_DIRNAME/../nvcat $BATS_TEST_DIRNAME/../nvcat-dispatch -- {}"
     grep -q MARK_HEADING "$work/out" || { echo "$name: $(<"$work/out")"; return 1; }
   done
 }
@@ -56,4 +56,38 @@ setup_names() {
   run_fzf "$work/list" "$BATS_TEST_DIRNAME/../nvcat --lines 1 --start-line {2} -- {1}" --delimiter '\t'
   grep -q MARK_HEADING "$work/out" || { cat "$work/out"; return 1; }
   ! grep -q '^line' "$work/out"
+}
+
+@test "examples/fzf-files: fzf accepts its options and lists the directory's files" {
+  command -v fzf >/dev/null || skip "fzf not installed"
+  mkdir -p "$BATS_TEST_TMPDIR/tree/.git" "$BATS_TEST_TMPDIR/tree/docs"
+  touch "$BATS_TEST_TMPDIR/tree/docs/notes.md" "$BATS_TEST_TMPDIR/tree/run.py" "$BATS_TEST_TMPDIR/tree/.git/HEAD"
+  # --filter prints the matches without a terminal, after fzf has parsed every --bind and --preview-window.
+  FZF_DEFAULT_OPTS=--filter=. run "$BATS_TEST_DIRNAME/../examples/fzf-files" "$BATS_TEST_TMPDIR/tree"
+  [ "$status" -eq 0 ]
+  [ "$(sort <<<"$output")" = $'docs/notes.md\nrun.py' ]
+}
+
+@test "examples/fzf-files: the preview routes through nvcat-dispatch with --, for any name" {
+  stubs=$BATS_TEST_TMPDIR/stubs
+  mkdir -p "$stubs" "$BATS_TEST_TMPDIR/tree"
+  # A stand-in fzf that keeps its arguments, so the test can run the preview command as fzf would.
+  printf '#!/bin/sh\ncat >/dev/null\nprintf "%%s\\n" "$@" > "$ARGS"\n' > "$stubs/fzf"
+  printf '#!/bin/sh\necho "nvcat $*"\n' > "$stubs/nvcat"
+  printf '#!/bin/sh\necho "bat $*"\n' > "$stubs/bat"
+  chmod +x "$stubs"/*
+  ARGS=$BATS_TEST_TMPDIR/args PATH="$stubs:$PATH" run "$BATS_TEST_DIRNAME/../examples/fzf-files" "$BATS_TEST_TMPDIR/tree"
+  [ "$status" -eq 0 ]
+  preview=$(grep -A1 -x -- --preview "$BATS_TEST_TMPDIR/args" | tail -1)
+  grep -qx 'resize:refresh-preview' "$BATS_TEST_TMPDIR/args"
+  cd "$BATS_TEST_TMPDIR/tree"
+  for name in '--print' '-a b.md' "it's.md" 'plain.py'; do
+    printf '# x\n' > "./$name"
+    printf -v quoted %q "$name"
+    run env NVCAT="$stubs/nvcat" BAT="$stubs/bat" bash -c "${preview//\{\}/$quoted}"
+    case $name in
+      *.md) [ "$output" = "nvcat --all --paging=never --budget=2 --filetype markdown -- $name" ] ;;
+      *) [ "$output" = "bat --color=always --paging=never -- $name" ] ;;
+    esac || { echo "$name: $output"; return 1; }
+  done
 }
