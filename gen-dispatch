@@ -86,6 +86,83 @@ def body(entries):
   return out
 
 
+WHOLE_LINES = 512  # Files with fewer lines are read by mapfile; a longer one's last line costs a tail fork.
+
+
+def modeline_functions():
+  """Bash for the line half of filetypes.modeline_filetype(): the same patterns, the same first and last line.
+  Checking the names against accepted() happens in stage two (accepted_functions), so bash parses the list
+  of filetypes only for files with a modeline."""
+  limit = filetypes.MODELINE_BYTES
+  return [
+    "# A Vim modeline's ft=/filetype= (else syn=/syntax=) in line $1; returns 0 with REPLY set.",
+    f"modeline_marker={shlex.quote(filetypes.MODELINE_MARKER)}",
+    f"modeline_set={shlex.quote(filetypes.MODELINE_SET)}",
+    "modeline() {",
+    "  REPLY=",
+    "  local line=${1%$'\\r'} rest word filetype= syntax=",
+    "  local -a words",
+    "  [[ $line =~ $modeline_marker ]] || return 1",
+    "  rest=${BASH_REMATCH[4]}",
+    "  if [[ $rest =~ $modeline_set ]]; then rest=${BASH_REMATCH[1]}; else rest=${rest//:/ }; fi",
+    "  read -ra words <<<\"$rest\"",
+    "  for word in \"${words[@]}\"; do",
+    "    case $word in",
+    "      ft=* | filetype=*) filetype=${word#*=} ;;",
+    "      syn=* | syntax=*) syntax=${word#*=} ;;",
+    "    esac",
+    "  done",
+    "  REPLY=${filetype:-$syntax}",
+    f"  [[ $REPLY =~ {filetypes.FILETYPE_NAME} ]] || {{ REPLY=; return 1; }}",
+    "}",
+    "",
+    "# The filetypes named by modelines in file $1's first and last lines, as named=(first last); returns 1",
+    f"# without any. mapfile reads a file of under {WHOLE_LINES} lines (no fork); a longer one, or one whose first",
+    f"# line is {limit} characters or more, gets its end from tail.",
+    "modelines() {",
+    "  local first last i",
+    "  local -a lines",
+    "  named=()",
+    f"  {{ IFS= read -r -n {limit} first || [[ -n $first ]]; }} < \"$1\" 2>/dev/null || return 1",
+    f"  if (( ${{#first}} < {limit} )) && {{ mapfile -t -n {WHOLE_LINES} lines < \"$1\"; }} 2>/dev/null &&",
+    f"     (( ${{#lines[@]}} < {WHOLE_LINES} )); then",
+    "    last=",
+    "    for (( i = ${#lines[@]} - 1; i >= 0; i-- )); do",
+    "      [[ -n ${lines[i]} ]] && { last=${lines[i]}; break; }",
+    "    done",
+    "  else",
+    f"    {{ last=$(tail -c {limit} -- \"$1\"); }} 2>/dev/null",
+    "    last=${last##*$'\\n'}",
+    "  fi",
+    f"  (( ${{#last}} > {limit} )) && last=${{last: -{limit}}}",
+    "  modeline \"$first\" && named+=(\"$REPLY\")",
+    "  modeline \"$last\" && named+=(\"$REPLY\")",
+    "  (( ${#named[@]} ))",
+    "}",
+    "",
+  ]
+
+
+def accepted_functions(accepted):
+  names = " | ".join(sorted(accepted))
+  return [
+    "# nvcat's filetypes (filetypes.accepted()), for the modelines found in stage one.",
+    "accepted() {",
+    f"  case $1 in {names}) return 0 ;; esac",
+    "  return 1",
+    "}",
+    "",
+    "if (( ${#named[@]} )); then",
+    "  shopt -u nocasematch",
+    "  for name in \"${named[@]}\"; do accepted \"$name\" && route \"$name\"; done",
+    "  shopt -s nocasematch",
+    "  detect \"$path\"",
+    "  case $? in 0) route \"$REPLY\" ;; 1) route '' ;; esac",
+    "fi",
+    "",
+  ]
+
+
 def generate(first, rest, version, patterns):
   """The dispatch script: entries in first are checked in stage one, rest (in order after them) in stage two."""
   entries = first + rest
@@ -104,6 +181,9 @@ def generate(first, rest, version, patterns):
     f"--filetype {filetypes.AUTO}",
     "#                                          hands filetypes it has no entry for to bat)",
     "#        -- ends the options, for a FILE named --print or starting with -",
+    "#",
+    "# A Vim modeline in FILE's first or last line that names one of nvcat's filetypes (ft= or filetype=,",
+    "# else syn= or syntax=) wins over everything else; no other modeline option is applied.",
     "#",
     "# NVCAT and BAT override the commands. nvcat errors are discarded and the file goes to bat.",
     "#",
@@ -125,6 +205,9 @@ def generate(first, rest, version, patterns):
     "  return 2",
     "}",
     "",
+  ]
+  out += modeline_functions()
+  out += [
     "# Print or render with the filetype in $1, or with bat when it is empty; never returns.",
     "route() {",
     "  shopt -u nocasematch",
@@ -149,11 +232,18 @@ def generate(first, rest, version, patterns):
     "path=$file",
     "[[ $path == /* ]] || path=$PWD/$path",
     "[[ -f $file ]] || route ''",
-    "shopt -s nocasematch",
-    "detect \"$path\"",
-    "case $? in 0) route \"$REPLY\" ;; 1) route '' ;; esac",
+    "named=()",
+    "if ! modelines \"$file\"; then",
+    "  shopt -s nocasematch",
+    "  detect \"$path\"",
+    "  case $? in 0) route \"$REPLY\" ;; 1) route '' ;; esac",
+    "fi",
     "",
-    "# Stage two, parsed only when stage one found nothing: filetypes.regex.json, then the 'last' entries.",
+    "# Stage two, parsed only when stage one found nothing or a modeline: nvcat's filetypes for the",
+    "# modeline, then filetypes.regex.json and the 'last' entries.",
+  ]
+  out += accepted_functions(filetypes.accepted())
+  out += [
     "detect_more() {",
     "  REPLY=",
     "  local name best value",

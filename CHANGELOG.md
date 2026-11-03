@@ -6,6 +6,17 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-03
+
+### Added
+
+- Filetypes from Vim modelines: `ft=`/`filetype=` (else `syn=`/`syntax=`) in a `vim:`, `vi:`, `ex:` or
+  `vim600:` modeline on a file's first or last line, in either of Vim's forms, decides the filetype in both
+  `nvcat` and `nvcat-dispatch`, ahead of the name and bat's claims, when it names one of nvcat's filetypes;
+  others are ignored. Nothing else in the modeline is applied. `notes.txt` ending in `# vim: ft=markdown`
+  now renders as Markdown. nvcat-dispatch reads files under 512 lines with bash's `mapfile` and the end of
+  longer ones with `tail`, about 1 ms (2-3 ms over 512 lines) per file.
+
 ## [0.16.0] - 2026-11-03
 
 ### Changed

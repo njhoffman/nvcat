@@ -12,6 +12,12 @@ GENERATED = Path(__file__).resolve().parent / "filetypes.regex.json"
 CLAIMS = Path(__file__).resolve().parent / "filetypes.bat.json"
 AUTO = "auto"  # The filetype of generated entries that Neovim detects by content (see gen-filetypes).
 HEAD_LINES = 40
+MODELINE_BYTES = 4096  # Of the first and the last line read for a modeline.
+# Vim's modeline marker: vi:, vim:, Vim: or ex: (with an optional version, vim600:) at the start of the line
+# or after whitespace. nvcat-dispatch matches the same with bash's =~ (gen-dispatch writes both from these).
+MODELINE_MARKER = r"(^|[[:space:]])(vi|vim|Vim|ex)([<>=]?[0-9]+)?:(.*)$"
+MODELINE_SET = r"^[[:space:]]*set?[[:space:]]+([^:]*)"
+FILETYPE_NAME = r"^[A-Za-z0-9_.-]+$"
 _cache = {}
 
 
@@ -91,9 +97,61 @@ def _index(entries):
   return suffixes, others
 
 
+def _posix(pattern):
+  return pattern.replace("[[:space:]]", r"\s")
+
+
+def modeline(line):
+  """The filetype a Vim modeline in line names: ft=/filetype=, else syn=/syntax=; None without one.
+
+  Both of Vim's forms: "vim: ft=x:syn=y" (options separated by spaces or colons) and "vim: set ft=x :"
+  (options up to the next colon). Only these options are read; nvcat never applies a modeline."""
+  marker = re.search(_posix(MODELINE_MARKER), line)
+  if not marker:
+    return None
+  rest = marker.group(4)
+  form = re.match(_posix(MODELINE_SET), rest)
+  words = form.group(1).split() if form else rest.replace(":", " ").split()
+  filetype = syntax = None
+  for word in words:
+    name, equals, value = word.partition("=")
+    if not equals:
+      continue
+    if name in ("ft", "filetype"):
+      filetype = value
+    elif name in ("syn", "syntax"):
+      syntax = value
+  value = filetype or syntax
+  return value if value and re.match(FILETYPE_NAME, value) else None
+
+
+def modeline_filetype(path):
+  """The filetype named by a modeline in path's first or last line, if nvcat renders it (accepted()), else None."""
+  try:
+    with open(path, "rb") as handle:
+      first = handle.read(MODELINE_BYTES).split(b"\n", 1)[0]
+      handle.seek(0, os.SEEK_END)
+      size = handle.tell()
+      handle.seek(max(0, size - MODELINE_BYTES))
+      last = handle.read().rstrip(b"\n").rsplit(b"\n", 1)[-1]
+  except OSError:
+    return None
+  for line in (first, last):
+    name = modeline(line.rstrip(b"\r").decode("utf-8", "replace"))
+    if name and name in accepted():  # accepted() loads the generated table; only for a modeline
+      return name
+  return None
+
+
 def detect(path, entries=None):
-  """Return the first entry matching path, mirroring the generated nvcat-dispatch."""
+  """Return the first entry matching path, mirroring the generated nvcat-dispatch.
+
+  Without entries, a modeline in path's first or last line comes first and overrides everything else, as it
+  does in Vim (applied after filetype detection)."""
   if entries is None:
+    named = modeline_filetype(path)
+    if named:
+      return find(named) or {"filetype": named}
     # As in nvcat-dispatch, bat's claims come first, then filetypes.json, whose matches need no generated table.
     if detect(path, claims()):
       return None

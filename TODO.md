@@ -1,9 +1,9 @@
 # Next Steps
 
-The working prototype renders the reference Markdown documents with the user's Neovim appearance.
-Preserve that behavior while improving portability and preview latency.
+nvcat renders Markdown and about 400 other filetypes with the user's Neovim appearance, as cat, pager and fzf
+preview. Preserve that output while cutting preview latency and keeping it portable to other machines.
 
-Reviewed: 2026-10-31
+Reviewed: 2026-11-03
 
 ## CLI and fzf integration
 
@@ -20,8 +20,10 @@ Reviewed: 2026-10-31
   feature-detect the fields, keep the unpatched path as fallback, and add a test that fails loudly when the
   internals change. Prefer the upstream fix if it lands.
 - [ ] **File the Neovim issue.** (p2) [chore] Draft and `nvim --clean` repro in
-  `docs/upstream/neovim-treesitter-injection-cost.md`. Needs `gh auth login`; search for duplicates first,
-  then link the issue here and drop the workaround notes once fixed upstream.
+  `docs/upstream/neovim-treesitter-injection-cost.md`, now with the 0.15.0 prototype's numbers. `gh` is
+  authenticated (2026-11-03); search for duplicates first, then link the issue here. Once fixed upstream,
+  keep `index_highlighter` off for the fixed versions (`tests/highlighter.bats` expects `on` for 0.12+) and drop
+  the workaround notes.
 - [x] **Non-numeric fzf size variables give a raw ValueError.** (p3) [bug] `int(os.environ["FZF_PREVIEW_COLUMNS"])`
   in `nvcat` main() prints `invalid literal for int()`; report which variable was bad instead.
 - [x] **less shows Nerd Font icons as `<U+F0CA3>`.** (p1) [bug] less treats Private Use Area code points as
@@ -42,7 +44,16 @@ Reviewed: 2026-10-31
   `cat justfile` (and every other filetypes.json entry, plus `.mdwn`/`.mkdn`) goes to bat as plain text even
   though `nvcat-dispatch --print justfile` answers `just`. Fix in bat-dynamic (dotbare): ask
   `nvcat-dispatch --print "$1"` and exec `nvcat --all --filetype "$ft"` on a match. Done in bat-dynamic
-  (~/.shell, uncommitted).
+  (~/.shell 0.50.0; `--` before the file since 0.62.1).
+- [x] **Filetype from modelines.** (p2) [feature] `notes.txt` ending in `# vim: ft=markdown` goes to bat:
+  `profile.lua` sets `modeline=false` (a modeline can set any option) and `vim.filetype.match` ignores
+  modelines. Parse `vim:`/`vi:`/`ex:` modelines for `ft`/`filetype` (else `syn`/`syntax`) ourselves, in both
+  `nvcat-dispatch` and `filetypes.detect()`, passing only the filetype. Done in 0.17.0: first and last line,
+  the modeline beats the name and bat's claims, `syn=` when there is no `ft=`, and a filetype nvcat does not
+  render is ignored. The router reads files under 512 lines with `mapfile` (a `tail` fork cost 2-3 ms).
+- [ ] **examples/fzf-files without a generated router.** (p3) [bug] Since 0.16.0 a checkout has no
+  `nvcat-dispatch` until `just install` or `just dispatch`; the example then shows a "No such file" error
+  in every preview. Check for it at start and print the command to run (or run `./gen-dispatch`).
 
 ## Performance
 
@@ -68,16 +79,24 @@ Reviewed: 2026-10-31
 - [x] (p2) [perf] Profile before optimizing; identify theme loading, parser loading, rendering, and RPC costs separately.
   `--timings`/`--timings-json`; findings in docs/PERFORMANCE.md.
 - [ ] **Redraw once per Markdown frame.** (p2) [perf] render-markdown calls `on.render` three times per frame and
-  each schedules a full `redraw` (`ready_callbacks` in `--timings`); redraw is 1.2 s of large.md's 2 s. Trace
-  which events fire them, then notify once per token after the explicit update, keeping the tail and viewport
-  tests green.
+  each schedules a full `redraw` (`ready_callbacks` in `--timings`, still 3). With the highlighter index
+  (0.15.0) redraw is 214 ms and render-markdown 246 ms of large.md's 672 ms (2026-11-03), down from 1.2 s of
+  2 s. Trace which events fire them, then notify once per token after the explicit update, keeping the tail
+  and viewport tests green.
 - [ ] **Injected-language loading is unattributed.** (p3) [perf] astro spends ~140 ms in `parse` loading the
   TypeScript and CSS parsers and queries; time `language.add`/query loads for injections as their own phase.
-- [ ] **cuda query compilation.** (p3) [perf] `vim.treesitter.start` takes ~390 ms for cuda (inherited cpp/c
-  queries) against ~130 ms total with `--syntax regex`. Consider a per-filetype `syntax` key in filetypes.json, or
+- [ ] **cuda query compilation.** (p3) [perf] `vim.treesitter.start` takes ~245 ms of cuda's ~300 ms (inherited
+  cpp/c queries; 2026-11-03, was ~390 ms) against ~130 ms total with `--syntax regex`. Consider a per-filetype `syntax` key in filetypes.json, or
   a trimmed query.
-- [ ] (p3) [perf] Python imports take ~40 ms of the ~75 ms startup (argparse, tomllib); lazy-import config
-  parsing and measure.
+- [ ] **Cut Python's fixed startup.** (p3) [perf] Python compiles the 1,010-line `nvcat` script on every run
+  (7 ms; a script gets no `.pyc`), and imports take ~20-24 ms (argparse, tomllib for the config). Move the
+  code into a module that the `nvcat` entry point imports, so it is cached, and consider skipping tomllib when
+  no config file exists. Worth about 5-10 ms per fzf preview, a quarter of the 16-23 ms nvcat costs a small file
+  over the Markdown-only v0.1.0.
+- [ ] **benchmarks/run records noisy runs.** (p3) [perf] Its gate is the 1-minute load average (at most 0.6 per
+  CPU), which a burst from another process slips under: on 2026-11-03 two runs had to be reverted by hand
+  (startup 84-124 ms against 35-45 ms). Keep the threshold, and also refuse to record a run whose startup
+  median is far above the recent history, or interleave the samples so a burst spreads across all of them.
 - [ ] (p3) [perf] Trial an optional persistent Neovim worker if startup dominates, with cancellation and cleanup tests.
 - [ ] (p3) [perf] Add caching only if measurements justify it; include viewport, file content, theme, configuration, and parser versions.
 
@@ -89,9 +108,9 @@ Reviewed: 2026-10-31
 - [ ] (p3) [feature] Investigate complete-document export beyond one enlarged grid without duplicating or skipping virtual rows.
 - [x] (p2) [docs] Define memory and parsing limits before claiming streaming or large-file support.
   README "Limits and fallback": no streaming, viewport time and memory by input size. Table-heavy input is
-  not measured yet.
+  measured by `benchmarks/highlighter` (a 600-row table, 0.15.0).
 
-## Optional support for other filetypes
+## Filetype support
 
 - [x] **SYNTAX.md has no regeneration script.** (p3) [chore] The Neovim-vs-bat comparison in `SYNTAX.md`
   was produced by an ad hoc Lua/Python scan plus hand review of extension collisions. `./gen-filetypes` now
@@ -116,9 +135,6 @@ Reviewed: 2026-10-31
   Done 2026-11-03 against v0.1.0 ([PERFORMANCE.md](docs/PERFORMANCE.md#against-the-markdown-only-release)):
   16-23 ms more fixed startup, all Python (script compilation, tomllib); same memory; 2-4x faster on
   larger documents.
-- [ ] **Cut Python's fixed startup.** (p3) [perf] Python compiles the 1,010-line `nvcat` script on every run
-  (7 ms; a script gets no `.pyc`). Move the code into a module that the `nvcat` entry point imports, so it is
-  cached, and consider skipping tomllib when no config file exists. Worth about 5-10 ms per fzf preview.
 - [x] **systemd entry is unreachable through dispatch.** (p3) [feature] bat's INI syntax claims `*.service`,
   `*.timer` and the other unit extensions, so `gen-dispatch` sends them to bat. Neovim's systemd syntax is
   more specific; set `"prefer_over_bat": true` on the entry in `filetypes.json` if it should win.

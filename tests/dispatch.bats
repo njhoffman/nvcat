@@ -334,3 +334,96 @@ sys.exit(1 if bad else 0)' "$ROOT"
     [ "$status" -eq 1 ] || { echo "$name: $output"; return 1; }
   done
 }
+
+# Write file $1 (in the test directory) with printf format $2.
+modeline_file() {
+  # shellcheck disable=SC2059
+  printf "$2" > "$BATS_TEST_TMPDIR/$1"
+}
+
+# The filetype nvcat-dispatch --print and filetypes.detect() give file $1, which must agree: $2.
+modeline_route() {
+  local file=$BATS_TEST_TMPDIR/$1 shell python
+  shell=$("$DISPATCH" --print -- "$file") || shell=
+  python=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import filetypes
+e = filetypes.detect(sys.argv[2]); print(e["filetype"] if e else "")' "$ROOT" "$file")
+  [ "$shell" = "$python" ] || { echo "$1: nvcat-dispatch '$shell', filetypes.detect '$python'"; return 1; }
+  [ "$shell" = "$2" ] || { echo "$1: '$shell', expected '$2'"; return 1; }
+}
+
+@test "a modeline in the first or last line names the filetype, beating the name and bat's claims" {
+  modeline_file notes.txt 'hello\n\n# vim: ft=markdown\n'
+  modeline_route notes.txt markdown
+  modeline_file a.conf '# vim: set filetype=tmux :\nset -g x\n'
+  modeline_route a.conf tmux
+  modeline_file x.c '/* vim: set syn=cobol: */\nint x;\n'  # bat claims *.c
+  modeline_route x.c cobol
+  modeline_file page.md 'x\n<!-- vim: set ft=tmux: -->\n'  # filetypes.json's markdown entry
+  modeline_route page.md tmux
+}
+
+@test "modeline forms: Vim's markers, versions, set and plain forms, ft before syn" {
+  modeline_file v1.txt 'Vim: ft=markdown\n'
+  modeline_route v1.txt markdown
+  modeline_file v2.txt 'x\n# vim600: ft=markdown\n'
+  modeline_route v2.txt markdown
+  modeline_file v3.txt '\tex: ft=po\n'
+  modeline_route v3.txt po
+  modeline_file v4.txt '# vi:ts=4:ft=kdl:sw=2\n'
+  modeline_route v4.txt kdl
+  modeline_file v5.txt '# vim: syn=cweb ft=markdown\n'
+  modeline_route v5.txt markdown
+  modeline_file v6.txt '# vim: set ft=markdown: ft=tmux\n'  # the set form ends at the colon
+  modeline_route v6.txt markdown
+  modeline_file v7.txt '# vim: ft=tmux ft\n'  # a bare ft sets nothing
+  modeline_route v7.txt tmux
+}
+
+@test "modelines are not found in the middle, without whitespace before the marker, or with odd names" {
+  modeline_file m1.txt 'a\n# vim: ft=markdown\nb\n'
+  modeline_route m1.txt ''
+  modeline_file m2.txt 'index:ft=markdown\n'
+  modeline_route m2.txt ''
+  modeline_file m3.txt 'VIM: ft=markdown\n'
+  modeline_route m3.txt ''
+  modeline_file m4.txt '# vim: ft=*\n'
+  modeline_route m4.txt ''
+  modeline_file m5.txt '# vim: ft=$(touch pwned)\n'
+  modeline_route m5.txt ''
+  [ ! -e pwned ] && [ ! -e "$BATS_TEST_TMPDIR/pwned" ]
+  modeline_file m6.txt ''
+  modeline_route m6.txt ''
+}
+
+@test "a modeline naming a filetype nvcat does not render is ignored" {
+  modeline_file s.sh '# vim: ft=zsh\necho\n'  # bat renders zsh; nvcat has no zsh entry
+  modeline_route s.sh ''
+  modeline_file r.md '# vim: ft=nosuchtype\n'
+  modeline_route r.md markdown
+  modeline_file both.txt '# vim: ft=zsh\nx\n# vim: ft=markdown\n'  # the first is skipped, the last taken
+  modeline_route both.txt markdown
+}
+
+@test "the last line: trailing blank lines, no final newline, CRLF, long files and long first lines" {
+  modeline_file t1.txt 'x\n# vim: ft=markdown\n\n\n'
+  modeline_route t1.txt markdown
+  modeline_file t2.txt 'x\n# vim: ft=markdown'
+  modeline_route t2.txt markdown
+  modeline_file t3.txt 'x\r\n# vim: ft=markdown\r\n'
+  modeline_route t3.txt markdown
+  # Over 512 lines, and a first line of 4096+ characters: the end comes from tail instead of mapfile.
+  { seq 1 600; printf '# vim: ft=markdown\n'; } > "$BATS_TEST_TMPDIR/t4.txt"
+  modeline_route t4.txt markdown
+  { printf '%05000d\n' 0; printf 'x\n# vim: ft=markdown\n'; } > "$BATS_TEST_TMPDIR/t5.txt"
+  modeline_route t5.txt markdown
+}
+
+@test "a modeline file renders with nvcat under its filetype" {
+  modeline_file notes.txt '# Title\n\nSome *text*.\n\n<!-- vim: set ft=markdown: -->\n'
+  run env NVCAT="$STUBS/nvcat-ok" BAT="$STUBS/bat" "$DISPATCH" "$BATS_TEST_TMPDIR/notes.txt"
+  [ "$output" = "nvcat --all --paging=never --budget=2 --filetype markdown -- $BATS_TEST_TMPDIR/notes.txt" ]
+  run --separate-stderr "$ROOT/nvcat" --paging=never --columns 60 --all --timings-json "$BATS_TEST_TMPDIR/notes.txt"
+  [ "$status" -eq 0 ]
+  [ "$(python3 -c 'import json, sys; r = json.loads(sys.stdin.read()); print(r["filetype"], r["engine"])' <<<"$stderr")" = \
+    "markdown render-markdown" ]
+}
