@@ -51,6 +51,8 @@ Reviewed: 2026-11-03
   `nvcat-dispatch` and `filetypes.detect()`, passing only the filetype. Done in 0.17.0: first and last line,
   the modeline beats the name and bat's claims, `syn=` when there is no `ft=`, and a filetype nvcat does not
   render is ignored. The router reads files under 512 lines with `mapfile` (a `tail` fork cost 2-3 ms).
+  0.18.0: "does not render" became "Neovim cannot highlight", after `fzfrc`'s `# vim:syn=bash:ft=` went to
+  bat as plain text (bash is bat's, not one of nvcat's filetypes).
 - [ ] **examples/fzf-files without a generated router.** (p3) [bug] Since 0.16.0 a checkout has no
   `nvcat-dispatch` until `just install` or `just dispatch`; the example then shows a "No such file" error
   in every preview. Check for it at start and print the command to run (or run `./gen-dispatch`).

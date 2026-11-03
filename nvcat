@@ -804,7 +804,8 @@ def main():
                       help="Seconds Neovim may take per render step before the fallback (default: 8)")
   parser.add_argument("--syntax", choices=["auto", "regex"], default="auto",
                       help="auto: Tree-sitter when the language has a highlights query, else Vim's regex syntax; "
-                      "regex: always Vim's regex syntax (Markdown then skips render-markdown)")
+                      "regex: always Vim's regex syntax (Markdown then skips render-markdown); a modeline "
+                      "with only syn=FILETYPE selects regex for that filetype")
   parser.add_argument("--filetypes", action="store_true",
                       help="List the filetypes nvcat handles, then exit: filetype, table (filetypes.json, or "
                       "regex for the generated filetypes.regex.json), globs, and the globs Neovim may detect as "
@@ -900,6 +901,10 @@ def run(args, timings):
       path = input_path(args.file)
     filetype = resolve_filetype(args.filetype, None if str(args.file) == "-" else args.file)
     auto = filetype is not None and "accept" in filetype
+    # A syn=-only modeline naming the filetype shown: Vim's regex syntax, as Vim itself shows that file.
+    if (args.syntax == "auto" and filetype and not auto and str(args.file) != "-"
+        and filetypes.regex_modeline(args.file, filetype["filetype"])):
+      args.syntax = "regex"
     timings.since("input and filetype", start)
     viewport = None if all_rows else height
     if args.follow:

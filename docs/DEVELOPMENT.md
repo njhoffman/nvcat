@@ -66,7 +66,8 @@ for, plus `auto` entries for globs Neovim assigns by content (their `detect` key
 renders). `filetypes.ordered()` gives the match order: filetypes.json, the generated entries, then the entries
 marked `last`. `./gen-dispatch` (run by `just install`, `just dispatch` and the test suite's setup; neither output is tracked) also writes `filetypes.bat.json`, the bat globs that would otherwise hit an
 entry; `filetypes.detect()` checks them first, as nvcat-dispatch does, and `filetypes.accepted()` is the set
-`--filetype auto` renders. `profile.lua` highlights them with Tree-sitter when a
+`--filetype auto` renders. `filetypes.highlighted()` (accepted() plus the
+`highlighted` list `./gen-filetypes` writes into filetypes.regex.json) is the set a modeline may name. `profile.lua` highlights them with Tree-sitter when a
 highlights query is installed and with Neovim's regex syntax otherwise, and signals readiness itself instead of
 waiting for render-markdown. Parsers load on demand.
 

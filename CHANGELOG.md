@@ -6,6 +6,23 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-03
+
+### Changed
+
+- A modeline may name any filetype nvcat's Neovim can highlight, not only nvcat's own: `~/.config/fzf/fzfrc`
+  ending in `# vim:syn=bash:ft=` now renders as bash through nvcat instead of as plain text in bat, and
+  `# vim: ft=zsh` beats bat's claim on `*.sh`. `./gen-filetypes` lists those filetypes (a syntax file, or a
+  Tree-sitter parser with a highlights query; 985 here) as `highlighted` in filetypes.regex.json. Names
+  Neovim cannot highlight are still ignored.
+- A modeline with only `syn=`/`syntax=` renders with Vim's regex syntax, as Neovim shows that file, instead of
+  Tree-sitter; with `--filetype` too when it names the same filetype (so through `nvcat-dispatch` and
+  `bat-dynamic`). `ft=` keeps `--syntax auto`.
+- `tests/benchmarks.bats` no longer fails when the machine is busy: the quick `benchmarks/filetypes` check
+  accepts a regression verdict (exit 1), which load alone produced at 2.8, and still checks that every
+  variant is measured and nothing recorded. Judge regressions with `benchmarks/filetypes --check` on a quiet
+  machine.
+
 ## [0.17.0] - 2026-11-03
 
 ### Added

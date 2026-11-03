@@ -338,7 +338,7 @@ sys.exit(1 if bad else 0)' "$ROOT"
 # Write file $1 (in the test directory) with printf format $2.
 modeline_file() {
   # shellcheck disable=SC2059
-  printf "$2" > "$BATS_TEST_TMPDIR/$1"
+  printf -- "$2" > "$BATS_TEST_TMPDIR/$1"
 }
 
 # The filetype nvcat-dispatch --print and filetypes.detect() give file $1, which must agree: $2.
@@ -395,12 +395,19 @@ e = filetypes.detect(sys.argv[2]); print(e["filetype"] if e else "")' "$ROOT" "$
   modeline_route m6.txt ''
 }
 
-@test "a modeline naming a filetype nvcat does not render is ignored" {
-  modeline_file s.sh '# vim: ft=zsh\necho\n'  # bat renders zsh; nvcat has no zsh entry
-  modeline_route s.sh ''
+@test "a modeline naming a language bat would render still goes to nvcat" {
+  modeline_file fzfrc '--cycle\n--ansi\n\n# vim:syn=bash:ft=\n'  # an empty ft= leaves syn=
+  modeline_route fzfrc bash
+  modeline_file s.sh '# vim: ft=zsh\necho\n'  # bat claims *.sh; Neovim highlights zsh
+  modeline_route s.sh zsh
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import filetypes
+assert "zsh" not in filetypes.accepted() and "zsh" in filetypes.highlighted()' "$ROOT"
+}
+
+@test "a modeline naming a filetype Neovim cannot highlight is ignored" {
   modeline_file r.md '# vim: ft=nosuchtype\n'
   modeline_route r.md markdown
-  modeline_file both.txt '# vim: ft=zsh\nx\n# vim: ft=markdown\n'  # the first is skipped, the last taken
+  modeline_file both.txt '# vim: ft=nosuchtype\nx\n# vim: ft=markdown\n'  # the first is skipped, the last taken
   modeline_route both.txt markdown
 }
 
@@ -426,4 +433,30 @@ e = filetypes.detect(sys.argv[2]); print(e["filetype"] if e else "")' "$ROOT" "$
   [ "$status" -eq 0 ]
   [ "$(python3 -c 'import json, sys; r = json.loads(sys.stdin.read()); print(r["filetype"], r["engine"])' <<<"$stderr")" = \
     "markdown render-markdown" ]
+}
+
+# The engine nvcat reports for file $1 rendered with the remaining arguments.
+render_engine() {
+  local file=$1
+  shift
+  run --separate-stderr "$ROOT/nvcat" --paging=never --columns 60 --all --timings-json "$@" -- "$file"
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  python3 -c 'import json, sys; r = json.loads(sys.stdin.read().splitlines()[-1]); print(r["filetype"], r["engine"])' <<<"$stderr"
+}
+
+@test "a syn=-only modeline renders with the regex syntax, as Vim shows it; ft= keeps Tree-sitter" {
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import filetypes
+sys.exit(0 if "bash" in filetypes.highlighted() else 1)' "$ROOT" || skip "Neovim cannot highlight bash here"
+  modeline_file fzfrc '--cycle\n\n# vim:syn=bash:ft=\n'
+  [ "$(render_engine "$BATS_TEST_TMPDIR/fzfrc")" = "bash syntax" ]
+  # As nvcat-dispatch and bat-dynamic call it.
+  [ "$(render_engine "$BATS_TEST_TMPDIR/fzfrc" --filetype bash)" = "bash syntax" ]
+  # Another filetype than the modeline's keeps --syntax auto.
+  modeline_file other '# vim: syn=bash\necho\n'
+  [ "$(render_engine "$BATS_TEST_TMPDIR/other" --filetype markdown)" = "markdown render-markdown" ]
+  modeline_file ft.txt '# vim: ft=bash\necho x\n'
+  engine=$(render_engine "$BATS_TEST_TMPDIR/ft.txt")
+  [[ $engine == "bash treesitter" || $engine == "bash syntax" ]]
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import filetypes
+assert filetypes.regex_modeline(sys.argv[2], "bash") is False' "$ROOT" "$BATS_TEST_TMPDIR/ft.txt"
 }

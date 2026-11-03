@@ -561,22 +561,22 @@ Other installed parsers are on the runtime path and may also highlight fences, b
 
 <!-- benchmark:start -->
 
-Latest run: 2026-11-03T17:17Z, version 0.16.0 (07af106-dirty), load 4.07, NVIM v0.13.0-dev-1915+gc5641b2bfb. Median of 3 runs after one warm-up, 100 columns; complete output uses `--all --budget 0`, viewport `--lines 40`, fzf sets `FZF_PREVIEW_COLUMNS=100` and `FZF_PREVIEW_LINES=40` (the time to the first usable fzf preview). Startup is the time until Neovim is set up (`--timings`), excluding Python's interpreter start; RSS is the peak of Neovim and of nvcat's Python. Averages compare wall time with all earlier runs in [benchmarks/history.tsv](benchmarks/history.tsv); regenerate with `benchmarks/run`.
+Latest run: 2026-11-03T18:26Z, version 0.18.0 (8d55077-dirty), load 4.56, NVIM v0.13.0-dev-1915+gc5641b2bfb. Median of 3 runs after one warm-up, 100 columns; complete output uses `--all --budget 0`, viewport `--lines 40`, fzf sets `FZF_PREVIEW_COLUMNS=100` and `FZF_PREVIEW_LINES=40` (the time to the first usable fzf preview). Startup is the time until Neovim is set up (`--timings`), excluding Python's interpreter start; RSS is the peak of Neovim and of nvcat's Python. Averages compare wall time with all earlier runs in [benchmarks/history.tsv](benchmarks/history.tsv); regenerate with `benchmarks/run`.
 
 | Sample | Lines | Code blocks | Mode | Latest (ms) | Average (ms) | Runs averaged | vs average | Startup (ms) | Neovim RSS (MiB) | Python RSS (MiB) |
 |---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|
-| [small](benchmarks/small.md) | 51 | 2 | complete | 216 | 428 | 14 | -50% | 34 | 25 | 20 |
-| [small](benchmarks/small.md) | 51 | 2 | viewport | 220 | 447 | 14 | -51% | 36 | 25 | 19 |
-| [small](benchmarks/small.md) | 51 | 2 | fzf | 240 | 351 | 7 | -32% | 39 | 25 | 19 |
-| [medium](benchmarks/medium.md) | 353 | 15 | complete | 496 | 1093 | 14 | -55% | 44 | 57 | 25 |
-| [medium](benchmarks/medium.md) | 353 | 15 | viewport | 292 | 598 | 14 | -51% | 35 | 44 | 19 |
-| [medium](benchmarks/medium.md) | 353 | 15 | fzf | 291 | 491 | 7 | -41% | 36 | 45 | 20 |
-| [large](benchmarks/large.md) | 888 | 40 | complete | 848 | 2317 | 14 | -63% | 79 | 65 | 34 |
-| [large](benchmarks/large.md) | 888 | 40 | viewport | 385 | 658 | 14 | -42% | 49 | 47 | 19 |
-| [large](benchmarks/large.md) | 888 | 40 | fzf | 608 | 541 | 7 | +12% | 69 | 46 | 19 |
-| [code](benchmarks/code.md) | 546 | 40 | complete | 819 | 1077 | 14 | -24% | 91 | 59 | 28 |
-| [code](benchmarks/code.md) | 546 | 40 | viewport | 533 | 606 | 14 | -12% | 69 | 45 | 19 |
-| [code](benchmarks/code.md) | 546 | 40 | fzf | 405 | 495 | 7 | -18% | 52 | 45 | 19 |
+| [small](benchmarks/small.md) | 51 | 2 | complete | 232 | 414 | 15 | -44% | 37 | 25 | 20 |
+| [small](benchmarks/small.md) | 51 | 2 | viewport | 234 | 432 | 15 | -46% | 39 | 25 | 20 |
+| [small](benchmarks/small.md) | 51 | 2 | fzf | 252 | 337 | 8 | -25% | 41 | 25 | 19 |
+| [medium](benchmarks/medium.md) | 353 | 15 | complete | 613 | 1053 | 15 | -42% | 53 | 57 | 25 |
+| [medium](benchmarks/medium.md) | 353 | 15 | viewport | 392 | 578 | 15 | -32% | 52 | 45 | 20 |
+| [medium](benchmarks/medium.md) | 353 | 15 | fzf | 372 | 466 | 8 | -20% | 47 | 48 | 20 |
+| [large](benchmarks/large.md) | 888 | 40 | complete | 937 | 2219 | 15 | -58% | 80 | 65 | 34 |
+| [large](benchmarks/large.md) | 888 | 40 | viewport | 418 | 640 | 15 | -35% | 50 | 45 | 20 |
+| [large](benchmarks/large.md) | 888 | 40 | fzf | 414 | 549 | 8 | -25% | 54 | 48 | 19 |
+| [code](benchmarks/code.md) | 546 | 40 | complete | 580 | 1059 | 15 | -45% | 64 | 60 | 28 |
+| [code](benchmarks/code.md) | 546 | 40 | viewport | 342 | 601 | 15 | -43% | 45 | 44 | 19 |
+| [code](benchmarks/code.md) | 546 | 40 | fzf | 367 | 484 | 8 | -24% | 43 | 46 | 20 |
 
 <!-- benchmark:end -->
 

@@ -91,11 +91,14 @@ helm template . | ./nvcat -c --filetype yaml
 ./nvcat --filetypes                 # filetype, table, globs and content-detected globs of every filetype
 ```
 
-Without `--filetype`, a Vim modeline in the file's first or last line that names one of nvcat's filetypes
-decides first, over the name and bat's claims: `ft=`/`filetype=`, else `syn=`/`syntax=`, in either of Vim's
+Without `--filetype`, a Vim modeline in the file's first or last line that names a filetype nvcat's Neovim
+can highlight (a syntax file, or a Tree-sitter parser with a highlights query) decides first, over the name
+and bat's claims, even for languages nvcat otherwise leaves to bat (`# vim:syn=bash:ft=` renders as bash): `ft=`/`filetype=`, else `syn=`/`syntax=`, in either of Vim's
 forms (`# vim: ft=markdown`, `/* vim: set filetype=tmux : */`; also `vi:`, `ex:` and `vim600:`). Only the
 filetype is read; Neovim's own modeline handling stays off, since a modeline can set any option. A modeline
-naming a filetype nvcat leaves to bat (`ft=zsh`) or does not know is ignored. `nvcat-dispatch` reads the same
+naming a filetype Neovim cannot highlight is ignored. A modeline with only `syn=` renders that filetype with
+Vim's regex syntax (as `--syntax regex` would), since that is what Neovim shows; this also applies when
+`--filetype` names the same filetype, as `nvcat-dispatch` passes it. An explicit `--syntax regex` always wins. `nvcat-dispatch` reads the same
 two lines. Otherwise the file's name is matched against [filetypes.json](filetypes.json), then the generated
 [filetypes.regex.json](filetypes.regex.json) (Neovim's regex-syntax filetypes that bat has no syntax for),
 then the `last` entries of filetypes.json (case-insensitively, so `README.MD` is Markdown); then Neovim's own

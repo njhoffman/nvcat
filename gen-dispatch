@@ -91,7 +91,7 @@ WHOLE_LINES = 512  # Files with fewer lines are read by mapfile; a longer one's 
 
 def modeline_functions():
   """Bash for the line half of filetypes.modeline_filetype(): the same patterns, the same first and last line.
-  Checking the names against accepted() happens in stage two (accepted_functions), so bash parses the list
+  Checking the names against highlighted() happens in stage two (accepted_functions), so bash parses the list
   of filetypes only for files with a modeline."""
   limit = filetypes.MODELINE_BYTES
   return [
@@ -146,7 +146,7 @@ def modeline_functions():
 def accepted_functions(accepted):
   names = " | ".join(sorted(accepted))
   return [
-    "# nvcat's filetypes (filetypes.accepted()), for the modelines found in stage one.",
+    "# Filetypes nvcat's Neovim can highlight (filetypes.highlighted()), for the modelines found in stage one.",
     "accepted() {",
     f"  case $1 in {names}) return 0 ;; esac",
     "  return 1",
@@ -242,7 +242,7 @@ def generate(first, rest, version, patterns):
     "# Stage two, parsed only when stage one found nothing or a modeline: nvcat's filetypes for the",
     "# modeline, then filetypes.regex.json and the 'last' entries.",
   ]
-  out += accepted_functions(filetypes.accepted())
+  out += accepted_functions(filetypes.highlighted())
   out += [
     "detect_more() {",
     "  REPLY=",

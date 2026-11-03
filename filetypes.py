@@ -102,7 +102,8 @@ def _posix(pattern):
 
 
 def modeline(line):
-  """The filetype a Vim modeline in line names: ft=/filetype=, else syn=/syntax=; None without one.
+  """The filetype a Vim modeline in line names, as (name, syntax_only): ft=/filetype=, else syn=/syntax=
+  (syntax_only True); None without one.
 
   Both of Vim's forms: "vim: ft=x:syn=y" (options separated by spaces or colons) and "vim: set ft=x :"
   (options up to the next colon). Only these options are read; nvcat never applies a modeline."""
@@ -122,11 +123,26 @@ def modeline(line):
     elif name in ("syn", "syntax"):
       syntax = value
   value = filetype or syntax
-  return value if value and re.match(FILETYPE_NAME, value) else None
+  return (value, not filetype) if value and re.match(FILETYPE_NAME, value) else None
 
 
 def modeline_filetype(path):
-  """The filetype named by a modeline in path's first or last line, if nvcat renders it (accepted()), else None."""
+  """The filetype named by a modeline in path's first or last line, if nvcat's Neovim can highlight it
+  (highlighted()), else None."""
+  found = _modeline(path)
+  return found[0] if found else None
+
+
+def regex_modeline(path, filetype):
+  """True when path's modeline sets only syn=/syntax= and names filetype: Vim shows that file with the regex
+  syntax, so nvcat renders it with --syntax regex instead of Tree-sitter."""
+  found = _modeline(path)
+  return bool(found and found[1] and found[0] == filetype)
+
+
+def _modeline(path):
+  """(name, syntax_only) of the first modeline in path's first or last line that names a highlighted()
+  filetype, else None."""
   try:
     with open(path, "rb") as handle:
       first = handle.read(MODELINE_BYTES).split(b"\n", 1)[0]
@@ -137,9 +153,9 @@ def modeline_filetype(path):
   except OSError:
     return None
   for line in (first, last):
-    name = modeline(line.rstrip(b"\r").decode("utf-8", "replace"))
-    if name and name in accepted():  # accepted() loads the generated table; only for a modeline
-      return name
+    found = modeline(line.rstrip(b"\r").decode("utf-8", "replace"))
+    if found and found[0] in highlighted():  # Loads the generated table; only for a modeline
+      return found
   return None
 
 
@@ -187,6 +203,19 @@ def claims():
       claimed = []
     _cache["claims"] = [{"filetype": syntax, "paths": [glob]} for syntax, glob in claimed]
   return _cache["claims"]
+
+
+def highlighted():
+  """Filetypes a modeline may name: accepted() plus every filetype nvcat's Neovim can highlight (a syntax file,
+  or a Tree-sitter parser with a highlights query), from filetypes.regex.json's "highlighted" list."""
+  if "highlighted" not in _cache:
+    try:
+      with open(GENERATED, encoding="utf-8") as handle:
+        names = json.load(handle).get("highlighted", [])
+    except FileNotFoundError:
+      names = []
+    _cache["highlighted"] = accepted() | set(names)
+  return _cache["highlighted"]
 
 
 def accepted():
