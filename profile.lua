@@ -512,6 +512,7 @@ local function load(path, spec, syntax)
     lap("open: filetype detection", start)
   end
   M.filetype = spec.filetype
+  M.lang = spec.lang or spec.filetype
   -- render-markdown needs the Markdown parser; without one that loads, show Vim's markdown syntax instead.
   M.rendered = M.filetype == "markdown" and syntax ~= "regex" and parser_loads("markdown")
   if M.filetype == "markdown" and not M.rendered and syntax ~= "regex" then
@@ -526,7 +527,7 @@ local function load(path, spec, syntax)
     lap("open: treesitter start", start)
     M.engine = "render-markdown"
   else
-    highlight(M.filetype, spec.lang or M.filetype, syntax)
+    highlight(M.filetype, M.lang, syntax)
   end
 end
 
@@ -697,6 +698,10 @@ function M.follow(path)
     local view = vim.fn.winsaveview()
     vim.bo[buf].modifiable = true
     vim.cmd("silent edit!")
+    -- :edit! leaves a non-Markdown buffer on the filetype's regex syntax, which would change its colors
+    if not M.rendered then
+      highlight(M.filetype, M.lang, M.syntax)
+    end
     vim.bo[buf].modifiable = false
     vim.bo[buf].modified = false
     -- render-markdown re-renders after :edit! by itself (pager.bats checks the reloaded screen).

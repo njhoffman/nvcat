@@ -149,6 +149,31 @@ if scenario == "follow-open":
   print("ok")
   sys.exit(0)
 
+if scenario == "follow-colors":
+  # A reload must keep a non-Markdown buffer's highlighting: the marker's color stays the same after a line is
+  # appended. The marker is resent because the appended line above it scrolls the view.
+  def color_of(marker):
+    found = re.findall(r"\x1b\[([0-9;]*)m[^\x1b]*" + marker, captured.decode("utf-8", "replace"))
+    return found[-1] if found else None
+
+  until("KEEP_COLOR", 0, "the first screen")
+  quiet()
+  before = color_of("KEEP_COLOR")
+  with open(path) as handle:
+    original = handle.read()
+  start = len(captured)
+  with open(path, "w") as handle:
+    handle.write('["APPENDED_LINE",\n' + original.lstrip("["))
+  until("APPENDED_LINE", start, "the reloaded file", timeout=5)
+  quiet()
+  after = color_of("KEEP_COLOR")
+  if not before or before != after:
+    fail(f"the color changed on reload: {before!r} -> {after!r}")
+  press("q")
+  finish(lambda status: status == 0)
+  print("ok")
+  sys.exit(0)
+
 if scenario == "follow":
   # --follow on a file taller than the screen: starts at the end, shows appended lines, pauses while the
   # cursor is above the last line, resumes on G, and survives truncation.

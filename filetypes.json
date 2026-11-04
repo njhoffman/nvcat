@@ -6,6 +6,7 @@
      "requires": {"ancestor_file": "Chart.yaml"}},
     {"filetype": "htmldjango", "extensions": ["html", "htm", "djhtml"],
      "requires": {"head_regex": "\\{%-?\\s*(autoescape|block|comment|csrf_token|cycle|debug|extends|filter|firstof|for|if|ifchanged|include|load|lorem|now|regroup|spaceless|templatetag|url|verbatim|widthratio|with)\\b|\\{#\\s"}},
+    {"filetype": "log", "prefer_over_bat": true, "extensions": ["log"], "names": ["*_log"]},
     {"filetype": "tmux", "names": [".tmux.conf", "tmux.conf", ".tmux*.conf", "tmux*.conf"]},
     {"filetype": "kitty", "names": ["kitty.conf"], "paths": ["*/kitty/*.conf"]},
     {"filetype": "hyprlang", "names": ["hyprland.conf", "hypridle.conf", "hyprlock.conf", "hyprpaper.conf"],

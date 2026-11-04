@@ -56,6 +56,12 @@ session() {
   session follow "$DOCUMENT" --follow
 }
 
+@test "--follow keeps a non-Markdown file's highlighting when it reloads" {
+  json=$BATS_TEST_TMPDIR/follow.json
+  printf '["KEEP_COLOR", 1]\n' > "$json"
+  session follow-colors "$json" --follow
+}
+
 @test "--follow refuses stdin, an external pager, a viewport and a pipe in one line" {
   run --separate-stderr "$NVCAT" --follow - < "$DOCUMENT"
   [ "$status" -eq 1 ] && [ "$stderr" = 'nvcat: --follow needs a file, not stdin' ]

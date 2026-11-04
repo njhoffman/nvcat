@@ -6,6 +6,8 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-03
+
 ### Added
 
 - `*.log` and `*_log` files render as `log`, with its Tree-sitter parser and query when `parser_dir` has them (Neovim's
@@ -14,6 +16,11 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 ### Fixed
 
 - `--follow` kept a non-Markdown file's Tree-sitter colors only until the first reload, then showed its regex syntax.
+
+### Known limitations
+
+- `log` uses Tree-sitter only where `parser_dir` has a `log` parser and query, which no parser manager installs today.
+- `--follow` reparses the whole file on each reload, so a Tree-sitter file of several MiB that changes often stutters.
 
 ## [0.21.2] - 2026-11-03
 
