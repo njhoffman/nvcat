@@ -43,6 +43,53 @@ setup() {
   [ "$newest" = "$VERSION" ]
 }
 
+@test "--help describes the command and not its code" {
+  run "$ROOT/nvcat" --help
+  [ "$status" -eq 0 ]
+  [[ $output == 'usage: nvcat '* ]]
+  [[ $output != *__pycache__* && $output != *bytecode* && $output != *'command()'* ]]
+  [[ $output == *'nvcat completions bash|zsh|fish'* ]]
+}
+
+@test "--help has color with --color always or on a terminal, none in a pipe or with NO_COLOR" {
+  unset NO_COLOR NVCAT_COLOR
+  export NVCAT_CONFIG=$BATS_TEST_TMPDIR/none.toml
+  run "$ROOT/nvcat" --help
+  [[ $output != *$'\e'* ]]
+  plain=$output
+  for flags in '--color=always --help' '--help --color always'; do
+    # shellcheck disable=SC2086
+    run "$ROOT/nvcat" $flags
+    [ "$status" -eq 0 ]
+    [[ $output == *$'\e[1;33moptions:\e[0m'* ]]
+    [[ $output == *$'\e[1;33musage:\e[0m nvcat'* ]]
+    [[ $output == *$'  \e[36m--paging\e[0m \e[32m{auto,always,never}\e[0m'* ]]
+    [[ $output == *$'  \e[36m-h,\e[0m \e[36m--help\e[0m'* ]]
+    # Only color was added: the layout is argparse's.
+    [ "$(sed 's/\x1b\[[0-9;]*m//g' <<<"$output")" = "$plain" ]
+  done
+  run "$ROOT/nvcat" --color=never --help
+  [[ $output != *$'\e'* ]]
+  # On a terminal, unless NO_COLOR or a setting says otherwise.
+  run python3 - "$BATS_TEST_DIRNAME/helpers" <<'EOF'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from common import load_nvcat
+nvcat = load_nvcat()
+sys.argv = ["nvcat", "--help"]
+sys.stdout.isatty = lambda: True
+results = [nvcat.help_color()]
+os.environ["NO_COLOR"] = "1"
+results.append(nvcat.help_color())
+sys.argv = ["nvcat", "--help", "--color=always"]
+results.append(nvcat.help_color())
+sys.argv = ["nvcat", "--help", "--color=sometimes"]
+results.append(nvcat.help_color())
+sys.stdout.write(" ".join(map(str, results)))
+EOF
+  [ "$output" = "True False True False" ]
+}
+
 @test "nvcat starts with PYTHONSAFEPATH set, directly and through a symbolic link" {
   run env PYTHONSAFEPATH=1 "$ROOT/nvcat" --version
   [ "$status" -eq 0 ]

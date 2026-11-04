@@ -103,7 +103,9 @@ def hyperfine(named, runs, temporary):
   if result.returncode:
     raise SystemExit(f"filetypes: hyperfine failed: {result.stderr.strip()}")
   results = json.loads(export.read_text())["results"]
-  return {item["command"]: item["median"] * 1000 for item in results}
+  # hyperfine 2 keeps the --command-name in name, and the statistics under summary.time_wall_clock (still seconds).
+  return {item.get("name", item["command"]): item.get("summary", {}).get("time_wall_clock", item)["median"] * 1000
+          for item in results}
 
 
 def measure(filetype, path, size, runs, temporary):

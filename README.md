@@ -196,6 +196,8 @@ and in Neovim terminal buffers. With color off the `nvim` pager gives way to `le
 color, except for `--follow`, which needs it. In `nvcat-dispatch`, the bat branch reads `NVCAT_COLOR` and `NO_COLOR`
 but not the config file.
 
+`--help` has color too: on a terminal unless `NO_COLOR` or a setting says otherwise, and with `--color=always` in a pipe.
+
 ### Terminal safety
 
 nvcat filters what a previewed file could send to your terminal. Neovim's grid shows control characters as text; output

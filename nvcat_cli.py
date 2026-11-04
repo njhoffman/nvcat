@@ -882,8 +882,9 @@ def environment_number(parser, name):
 def main():
   timings = Timings()
   timings.since("python imports", STARTED)
-  parser = argparse.ArgumentParser(description=__doc__, epilog="nvcat completions bash|zsh|fish prints a shell "
-                                   "completion script.")
+  parser = HelpParser(prog="nvcat", description="Print a file as Neovim shows it, with your theme and Markdown rendering: "
+                      "a cat, a pager and an fzf preview.",
+                      epilog="nvcat completions bash|zsh|fish prints a shell completion script.")
   if sys.argv[1:] == ["--check"]:
     return check()
   if sorted(sys.argv[1:]) == ["--all", "--check"]:
@@ -984,6 +985,55 @@ def list_filetypes():
   except BrokenPipeError:
     os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
   return 0
+
+
+HELP_HEADING, HELP_FLAG, HELP_VALUE, HELP_RESET = "\x1b[1;33m", "\x1b[36m", "\x1b[32m", "\x1b[0m"
+HELP_FLAGS = re.compile(r"(?<![\w-])--?[a-zA-Z][\w-]*")
+
+
+def help_color():
+  """Whether --help is in color: as for output, except that with nothing set a pipe gets plain text, since help is
+  not a preview."""
+  mode = None
+  for index, argument in enumerate(sys.argv):
+    if argument.startswith("--color="):
+      mode = argument.split("=", 1)[1]
+    elif argument == "--color" and index + 1 < len(sys.argv):
+      mode = sys.argv[index + 1]
+  try:
+    mode = mode or config.load()[0]["color"]
+    return use_color(mode) if mode else sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+  except (PreviewError, config.ConfigError):
+    return False
+
+
+def color_help(text):
+  """Color finished help text; argparse's wrapping has already happened, so the codes cannot disturb its columns."""
+  lines, usage = [], False
+  for line in text.split("\n"):
+    usage = line.startswith("usage:") or (usage and bool(line.strip()))
+    entry = re.fullmatch(r"  (\S.*?)(\s{2,}\S.*|)", line)
+    if usage:
+      name, rest = line.split(":", 1) if line.startswith("usage:") else ("", line)
+      rest = HELP_FLAGS.sub(lambda match: f"{HELP_FLAG}{match[0]}{HELP_RESET}", rest)
+      line = f"{HELP_HEADING}{name}:{HELP_RESET}{rest}" if name else rest
+    elif re.fullmatch(r"[a-z][a-z ]*:", line):
+      line = f"{HELP_HEADING}{line}{HELP_RESET}"
+    elif entry:
+      words = [f"{HELP_FLAG if word[0] == '-' else HELP_VALUE}{word}{HELP_RESET}" for word in entry[1].split(" ")]
+      line = f"  {' '.join(words)}{entry[2]}"
+    lines.append(line)
+  return "\n".join(lines)
+
+
+class HelpParser(argparse.ArgumentParser):
+  def __init__(self, *arguments, **keywords):
+    super().__init__(*arguments, **keywords)
+    self.color = False  # Python 3.14's own help color would color what color_help() colors.
+
+  def format_help(self):
+    text = super().format_help()
+    return color_help(text) if help_color() else text
 
 
 def print_completions(parser, arguments):

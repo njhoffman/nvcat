@@ -6,6 +6,18 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-03
+
+### Added
+
+- `--help` has color: headings, options and their values. On a terminal unless `NO_COLOR` or a setting turns it off, and
+  with `--color=always` in a pipe.
+
+### Fixed
+
+- `--help` described nvcat's code (bytecode and `__pycache__`, since 0.20.0); it now says what the command does.
+- `benchmarks/filetypes` failed with hyperfine 2, which moved its statistics in the exported JSON. Both versions work.
+
 ## [0.24.0] - 2026-11-03
 
 ### Added
