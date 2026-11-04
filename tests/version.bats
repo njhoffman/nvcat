@@ -43,9 +43,24 @@ setup() {
   [ "$newest" = "$VERSION" ]
 }
 
+@test "nvcat starts with PYTHONSAFEPATH set, directly and through a symbolic link" {
+  run env PYTHONSAFEPATH=1 "$ROOT/nvcat" --version
+  [ "$status" -eq 0 ]
+  [ "$output" = "nvcat $(cat "$ROOT/VERSION")" ]
+  ln -s "$ROOT/nvcat" "$BATS_TEST_TMPDIR/linked"
+  run env PYTHONSAFEPATH=1 "$BATS_TEST_TMPDIR/linked" --version
+  [ "$status" -eq 0 ]
+  [ "$output" = "nvcat $(cat "$ROOT/VERSION")" ]
+  # Past --version: the modules nvcat_cli imports load, and a render runs.
+  printf '# Safe\n' > "$BATS_TEST_TMPDIR/safe.md"
+  run --separate-stderr env PYTHONSAFEPATH=1 "$ROOT/nvcat" --paging=never --columns 40 "$BATS_TEST_TMPDIR/safe.md"
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [[ $output == *Safe* ]]
+}
+
 @test "the nvcat command is a thin entry point whose code Python caches as bytecode" {
-  [ "$(grep -cv '^\s*$' "$ROOT/nvcat")" -le 6 ]
-  grep -q '^from nvcat_cli import command$' "$ROOT/nvcat"
+  [ "$(grep -cv '^\s*$' "$ROOT/nvcat")" -le 9 ]
+  grep -q '^from nvcat_cli import command' "$ROOT/nvcat"
   # A run through the entry point leaves nvcat_cli's bytecode in __pycache__ (unless writing it is off).
   [ -n "${PYTHONDONTWRITEBYTECODE-}" ] && skip "PYTHONDONTWRITEBYTECODE is set"
   rm -f "$ROOT"/__pycache__/nvcat_cli.*.pyc

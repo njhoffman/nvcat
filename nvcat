@@ -1,6 +1,10 @@
 #!/usr/bin/python3
 """nvcat: Neovim-rendered cat, pager and fzf preview. The code is in nvcat_cli.py, imported so that Python
 caches its bytecode instead of compiling it on every start."""
-from nvcat_cli import command
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # PYTHONSAFEPATH leaves the script's directory out.
+from nvcat_cli import command  # noqa: E402
 
 command()

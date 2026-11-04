@@ -326,8 +326,11 @@ class Renderer:
   def request(self, method, *arguments):
     self.serial += 1
     serial = self.serial
-    self.process.stdin.write(msgpack.packb([0, serial, method, list(arguments)], use_bin_type=True))
-    self.process.stdin.flush()
+    try:
+      self.process.stdin.write(msgpack.packb([0, serial, method, list(arguments)], use_bin_type=True))
+      self.process.stdin.flush()
+    except BrokenPipeError:
+      raise self.exited() from None
     deadline = time.monotonic() + self.timeout
     while serial not in self.responses:
       self.pump(deadline)
@@ -335,6 +338,12 @@ class Renderer:
     if error:
       raise PreviewError(concise(error))
     return result
+
+  def exited(self):
+    """The error for a Neovim that has gone, with what it wrote to stderr."""
+    self.stderr.seek(0)
+    diagnostic = self.stderr.read().decode(errors="replace")[-2000:]
+    return PreviewError("Neovim exited before completing the preview. " + diagnostic)
 
   def pump(self, deadline):
     budgeted = self.budget_deadline is not None and self.budget_deadline < deadline
@@ -348,9 +357,7 @@ class Renderer:
     data = os.read(self.process.stdout.fileno(), 65536)
     self.timings.facts["redraw_bytes"] = self.timings.facts.get("redraw_bytes", 0) + len(data)
     if not data:
-      self.stderr.seek(0)
-      diagnostic = self.stderr.read().decode(errors="replace")[-2000:]
-      raise PreviewError("Neovim exited before completing the preview. " + diagnostic)
+      raise self.exited()
     self.unpacker.feed(data)
     for message in self.unpacker:
       if message[0] == 1:
@@ -559,7 +566,10 @@ class Renderer:
           pass
         self.process.wait()
     if self.process:
-      self.process.stdin.close()
+      try:
+        self.process.stdin.close()
+      except BrokenPipeError:  # Buffered bytes a Neovim that has gone did not read; must not hide the real error.
+        pass
       self.process.stdout.close()
     self.stderr.close()
 

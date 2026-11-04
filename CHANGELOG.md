@@ -6,6 +6,29 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+### Added
+
+- `*.log` and `*_log` files render as `log`, with its Tree-sitter parser and query when `parser_dir` has them (Neovim's
+  regex syntax otherwise), instead of falling through to Markdown, which struck through text between two `~`.
+
+### Fixed
+
+- `--follow` kept a non-Markdown file's Tree-sitter colors only until the first reload, then showed its regex syntax.
+
+## [0.21.2] - 2026-11-03
+
+### Fixed
+
+- A Neovim that exits at start could end in exit status 0 and no output, about 1 run in 10, so a preview stayed
+  blank and nothing fell back to bat. It is now always the error "Neovim exited before completing the preview",
+  with what Neovim wrote to stderr.
+- nvcat starts with `PYTHONSAFEPATH` set, which took its own directory off Python's module path.
+
+### Changed
+
+- `tests/nvim-versions` also runs `attributes.bats` and `reference.bats`. Checked with this release: Neovim 0.11.7
+  and 0.12.6 pass, including the link and underline output added in 0.21.0.
+
 ## [0.21.1] - 2026-11-03
 
 ### Security

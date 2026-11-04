@@ -98,6 +98,31 @@ break_query() {  # lang [name]
   [[ $output == *'Neovim exited before completing the preview. nvim: broken install'* ]]
 }
 
+@test "a Neovim already gone when nvcat writes to it is an error, not an empty success" {
+  printf '#!/bin/sh\necho "nvim: broken install" >&2\nexit 2\n' > "$BATS_TEST_TMPDIR/nvim"
+  chmod +x "$BATS_TEST_TMPDIR/nvim"
+  # Popen waits for the stub's exit, so the first request always meets the closed pipe (without it, 1 run in 10).
+  run python3 - "$BATS_TEST_DIRNAME/helpers" "$BATS_TEST_TMPDIR" <<'EOF'
+import subprocess, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+from common import load_nvcat
+nvcat = load_nvcat()
+popen = subprocess.Popen
+def exited_popen(*args, **kwargs):
+  process = popen(*args, **kwargs)
+  process.wait()
+  return process
+nvcat.subprocess.Popen = exited_popen
+with tempfile.TemporaryDirectory() as temporary:
+  try:
+    nvcat.Renderer(sys.argv[2] + "/nvim", {}, temporary, 60, 10, 8)
+  except nvcat.PreviewError as error:
+    print(error)
+EOF
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *'Neovim exited before completing the preview. nvim: broken install'* ]]
+}
+
 @test "a missing msgpack is named with how to install it" {
   mkdir -p "$BATS_TEST_TMPDIR/python/msgpack"
   echo 'raise ImportError("No module named msgpack")' > "$BATS_TEST_TMPDIR/python/msgpack/__init__.py"

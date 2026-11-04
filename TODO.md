@@ -69,14 +69,15 @@ Reviewed: 2026-11-03
   and test ESC, BEL and ST in inline links and autolinks.
   Done in 0.21.1: such a link stays plain text (`CONTROL_BYTES`, `tests/attributes.bats`), and
   `filter_link_urls` in `profile.lua` drops those URLs in the `nvim` pager (`tests/pager.bats`).
-- [ ] **A Neovim that dies at start can exit 0 with no output.** (p2) [bug] When Neovim has already exited,
-  `Renderer._close()` gets `BrokenPipeError` from `process.stdin.close()`, which replaces the real error; the
-  top-level handler takes it for a closed stdout and exits 0. About 1 run in 10 with a stub that exits at once
-  (6 of 60, 2026-11-03), so a blank preview with no bat fallback, and `tests/dependencies.bats` flakes. Guard the
-  close in `_close()` and keep the original exception.
-- [ ] **`PYTHONSAFEPATH` breaks nvcat.** (p2) [bug] Since 0.20.0 the entry point imports `nvcat_cli` through
-  `sys.path[0]`, which `PYTHONSAFEPATH=1` removes: `ModuleNotFoundError` on every run, `--version` included.
-  Insert the real directory of `__file__` into `sys.path` in `nvcat`, without losing the start-up saving.
+- [x] **A Neovim that dies at start can exit 0 with no output.** (p2) [bug] A request written to a Neovim that had
+  exited raised `BrokenPipeError`, and so did `process.stdin.close()` in `_close()`; the top-level handler took it for a
+  closed stdout and exited 0. About 1 run in 10 with a stub that exits at once (6 of 60, 2026-11-03), so a blank
+  preview with no bat fallback, and `tests/dependencies.bats` flaked.
+  Done in 0.21.2: both report "Neovim exited before completing the preview" with its stderr (60 of 60).
+- [x] **`PYTHONSAFEPATH` breaks nvcat.** (p2) [bug] `PYTHONSAFEPATH=1` removes the script's directory from `sys.path`, so
+  every run ended in `ModuleNotFoundError`, `--version` included (0.18 too, through `import config`).
+  Done in 0.21.2: the entry point adds the directory of its real path. `gen-dispatch` and `gen-filetypes` still
+  need it unset.
 - [ ] **`auto` hyperlinks are off when no pager runs.** (p3) [bug] `hyperlinks()` checks only the configured
   pager, so `NVCAT_PAGER=more` drops links from piped output, `--lines` viewports and fzf previews too. Use
   `wants_pager()`, which already knows these cases.
@@ -172,9 +173,9 @@ Reviewed: 2026-11-03
 - [ ] **fzf sometimes does not exit in `tests/fzf.bats`.** (p3) [test] Once on 2026-11-03, fzf had not exited 10 s after
   ESC at the end of the session test, at load 3 (`TimeoutExpired` in `fzf_session.py`); every rendering check before
   it passed. It then passed 6 of 6, as did 0.21.0. Cause unknown: find out whether a preview ignores cancellation.
-- [ ] **Run `tests/nvim-versions` for 0.19.0-0.21.x.** (p2) [test] `docs/RELEASING.md` requires it for each release;
-  it did not run for these, so the released 0.11 and 0.12 are unchecked for OSC 8 `url` attributes, underline
-  styles and the two-row grid. Add `attributes` and `reference` to its `DEFAULT_TESTS`, which lacks them.
+- [x] **Run `tests/nvim-versions` for 0.19.0-0.21.x.** (p2) [test] `docs/RELEASING.md` requires it for each release;
+  it did not run for these, and its `DEFAULT_TESTS` lacked `attributes` and `reference`.
+  Done in 0.21.2: both added; v0.11.7 190 of 190 and v0.12.6 191 of 191 ok, 1 skipped each.
 - [ ] **The suite runs only on a configured machine.** (p3) [test] There is no CI, and most test files use the
   developer's `config.toml`, theme and render-markdown options; a default-options bug hid behind that until
   0.21.0. Run the suite with an empty config (as `reference.bats` does for options), then add a CI job with
