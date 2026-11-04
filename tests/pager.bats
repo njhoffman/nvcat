@@ -32,8 +32,12 @@ session() {
 @test "a link whose URL has control bytes sends no escapes; clean links stay links" {
   doc=$BATS_TEST_TMPDIR/evil.md
   printf '%b\n\n' '[one](http://a.example/\e]0;PWNED\ab)' '[two](http://b.example/\aPWNED)' \
-    '[three](http://c.example/\xc2\x9dPWNED)' '[four](http://d.example/\x9dPWNED)' \
+    '[three](http://c.example/\xc2\x9dPWNED)' \
+    '[spaced](<http://sp.example/a b>) [accent](http://ac.example/caf\xc3\xa9)' \
     '[fine](http://ok.example/)' 'END_LINKS' > "$doc"
+  session unsafe-links "$doc" --paging=always
+  # A byte that is not UTF-8 has Neovim read the whole file as Latin-1, so it is a document of its own.
+  printf '%b\n\n' '[four](http://d.example/\x9dPWNED)' '[fine](http://ok.example/)' 'END_LINKS' > "$doc"
   session unsafe-links "$doc" --paging=always
 }
 

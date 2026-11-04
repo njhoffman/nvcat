@@ -17,6 +17,7 @@ Prints "ok" on success; otherwise the reason and the tail of the screen output, 
 
 import fcntl
 import os
+from pathlib import Path
 import pty
 import re
 import select
@@ -132,8 +133,12 @@ if scenario == "unsafe-links":
   # A URL's control bytes must not reach the terminal, and clean links still must.
   until("END_LINKS", 0, "the document")
   quiet()
-  if b"http://ok.example/" not in captured:
-    fail("the clean link has no OSC 8 sequence")
+  document = Path(path).read_bytes()
+  for uri in [b"http://ok.example/", b"http://sp.example/a%20b", b"http://ac.example/caf%C3%A9"]:
+    if uri.split(b"/")[2] in document and b";" + uri not in captured:
+      fail(f"no OSC 8 sequence for {uri.decode()}")
+  if b"<http://sp" in captured:
+    fail("a URL kept its angle brackets")
   if b"PWNED" in captured or b"\x1b]0;" in captured:
     fail("a URL's control bytes reached the terminal")
   press("q")

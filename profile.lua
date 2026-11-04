@@ -214,8 +214,16 @@ function M.filter_link_urls()
   local set_extmark = vim.api.nvim_buf_set_extmark
   vim.api.nvim_buf_set_extmark = function(buf, ns, row, col, opts)
     local url = opts.url
-    if url and (url:find("[%c\127]") or url:find("\194[\128-\159]") or vim.fn.iconv(url, "utf-8", "utf-8") == "") then
-      opts.url = nil
+    if url then
+      if url:find("[%c\127]") or url:find("\194[\128-\159]") or vim.fn.iconv(url, "utf-8", "utf-8") == "" then
+        opts.url = nil
+      else
+        -- As link_target() in nvcat_cli.py: no Markdown <angle brackets>, the rest percent-encoded.
+        url = (url:match("^<(.*)>$") or url):gsub("[^\33-\126]", function(byte)
+          return ("%%%02X"):format(byte:byte())
+        end)
+        opts.url = url ~= "" and url or nil
+      end
     end
     return set_extmark(buf, ns, row, col, opts)
   end

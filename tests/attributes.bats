@@ -41,9 +41,9 @@ EOF
 @test "Markdown links are OSC 8 hyperlinks, each closed before its row ends" {
   run --separate-stderr "$NVCAT" --paging=never --columns 80 --all "$SYNTAX"
   [ "$status" -eq 0 ]
-  [[ $output == *$'\e]8;;https://example.com/auto\e\\'* ]]
+  [[ $output == *$'\e]8;id='*$';https://example.com/auto\e\\'* ]]
   while IFS= read -r line; do
-    opened=$(grep -o $'\e]8;;[^\e]\+\e' <<<"$line" | wc -l)
+    opened=$(grep -o $'\e]8;id=[^\e]\+\e' <<<"$line" | wc -l)
     closed=$(grep -o $'\e]8;;\e' <<<"$line" | wc -l)
     [ "$opened" -eq "$closed" ] || { echo "unbalanced: $line"; return 1; }
   done <<<"$output"
@@ -68,8 +68,8 @@ EOF
     [[ $output != *$'\xc2\x9d'* ]] || { echo "$mode: C1 in output"; return 1; }
     [[ $output != *$'\x7f'* ]] || { echo "$mode: DEL in output"; return 1; }
     # The only OSC 8 targets left are the clean link's, and the link texts still show.
-    targets=$(grep -ao $'\e]8;;[^\e]\+' <<<"$output" | sort -u)
-    [ "$targets" = $'\e]8;;http://ok.example/' ] || { echo "$mode: targets: $targets" | cat -v; return 1; }
+    targets=$(grep -ao $'\e]8;id=[^\e]\+' <<<"$output" | sort -u)
+    [ "$targets" = $'\e]8;id=1;http://ok.example/' ] || { echo "$mode: targets: $targets" | cat -v; return 1; }
     for text in osc bel st csi c1 del fine; do
       [[ $output == *"$text"* ]] || { echo "$mode: '$text' missing"; return 1; }
     done
@@ -86,7 +86,41 @@ EOF
   # The flag wins over the setting.
   NVCAT_HYPERLINKS=never run --separate-stderr "$NVCAT" --paging=never --hyperlinks always --columns 80 \
     --all "$SYNTAX"
-  [[ $output == *$'\e]8;;https://'* ]]
+  [[ $output == *$'\e]8;id='*';https://'* ]]
+}
+
+@test "auto hyperlinks stay on when a configured pager command does not run" {
+  unset FZF_PREVIEW_COLUMNS FZF_PREVIEW_LINES NVIM
+  NVCAT_PAGER=more run --separate-stderr "$NVCAT" --columns 80 "$SYNTAX"  # Piped.
+  [[ $output == *$'\e]8;id='* ]]
+  NVCAT_PAGER=more FZF_PREVIEW_COLUMNS=80 FZF_PREVIEW_LINES=40 run --separate-stderr "$NVCAT" "$SYNTAX"
+  [[ $output == *$'\e]8;id='* ]]
+  NVCAT_PAGER=more run --separate-stderr "$NVCAT" --columns 80 --lines 40 "$SYNTAX"
+  [[ $output == *$'\e]8;id='* ]]
+}
+
+@test "OSC 8 targets lose Markdown's angle brackets and percent-encode the rest" {
+  printf '%b\n' '[a](<http://a.example/x y>) [b](http://b.example/caf\xc3\xa9) [c](http://c.example/\xe2\x80\xaeZ)' \
+    '[d](http://d.example/a%20b?q=1;r=2#f)' > "$BATS_TEST_TMPDIR/uris.md"
+  run --separate-stderr "$NVCAT" --paging=never --columns 100 "$BATS_TEST_TMPDIR/uris.md"
+  [ "$status" -eq 0 ]
+  targets=$(grep -ao $'\e]8;id=[0-9]*;[^\e]\+' <<<"$output" | sed 's/^.*id=[0-9]*;//')
+  [ "$targets" = 'http://a.example/x%20y
+http://b.example/caf%C3%A9
+http://c.example/%E2%80%AEZ
+http://d.example/a%20b?q=1;r=2#f' ] || { echo "$targets"; return 1; }
+}
+
+@test "a link wrapped over rows has one id; different URIs have different ids" {
+  printf '[a long link text that wraps over the row boundary of this narrow output](http://w.example/) and [o](http://o.example/)\n' \
+    > "$BATS_TEST_TMPDIR/wrap.md"
+  run --separate-stderr "$NVCAT" --paging=never --columns 30 "$BATS_TEST_TMPDIR/wrap.md"
+  [ "$status" -eq 0 ]
+  wrapped=$(grep -ao $'\e]8;id=[0-9]*;http://w.example/' <<<"$output" | sort | uniq -c | awk '{print $1}')
+  [ "$wrapped" -ge 2 ] || { echo "wrapped: $wrapped"; return 1; }
+  [ "$(grep -ao $'\e]8;id=[0-9]*;http://w.example/' <<<"$output" | sort -u | wc -l)" -eq 1 ]
+  [[ $output == *$'\e]8;id=1;http://w.example/'* ]]
+  [[ $output == *$'\e]8;id=2;http://o.example/'* ]]
 }
 
 @test "auto hyperlinks are off only when a pager command other than less may show the output" {
@@ -94,6 +128,7 @@ EOF
 import sys; sys.path.insert(0, '$BATS_TEST_DIRNAME/helpers')
 from common import load_nvcat
 nvcat = load_nvcat()
+nvcat.wants_pager = lambda mode, complete: mode != 'never'  # As on a terminal, for a complete document.
 cases = [('auto', 'nvim', 'auto'), ('auto', ['less', '-R'], 'auto'), ('auto', ['/usr/bin/less', '-RS'], 'always'),
          ('auto', ['more'], 'auto'), ('auto', ['more'], 'never'), ('always', ['more'], 'auto'),
          ('never', 'nvim', 'never'), (None, 'nvim', 'auto')]

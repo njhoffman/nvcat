@@ -41,7 +41,7 @@ just install   # generate nvcat-dispatch, then symlink it and nvcat into ~/.loca
 just uninstall
 ```
 
-The commands are linked, not copied: nvcat finds `nvcat_cli.py`, `profile.lua`, `readonly.py`, `config.py`,
+The commands are linked, not copied: nvcat finds `nvcat_cli.py`, `completions.py`, `profile.lua`, `readonly.py`, `config.py`,
 `filetypes.*` and `queries/` next to its real path, so keep the checkout in place. `nvcat-dispatch` and
 `filetypes.bat.json` are generated on each machine from its bat and are not tracked; run `just dispatch` (or
 `just install` again) after updating the checkout or changing bat's config, and `nvcat --check` warns while
@@ -110,6 +110,18 @@ filetypes and hands it to bat otherwise, without a notice. Input with a NUL byte
 fallback. A symbolic link is matched by
 its own name first and by its target's name when its own matches nothing. stdin is Markdown unless
 `--filetype` is given.
+
+### Shell completion
+
+`nvcat completions bash|zsh|fish` prints a completion script for the options, their values, and the filetypes of
+this machine's tables (asked for when you press Tab). A lone `nvcat completions` opens a file of that name if there
+is one.
+
+```sh
+source <(nvcat completions bash)                                    # in ~/.bashrc
+source <(nvcat completions zsh)                                     # in ~/.zshrc, after compinit; or save as _nvcat on $fpath
+nvcat completions fish > ~/.config/fish/completions/nvcat.fish
+```
 
 ### Output modes
 
@@ -181,14 +193,14 @@ Curly, double, dotted and dashed underlines (spelling and diagnostic highlights,
 `4:3`, `4:2`, `4:4` and `4:5`, and an underline color as `58:2::R:G:B`. These colon forms are standard; a
 terminal without them shows a plain underline or ignores them.
 
-Markdown inline links and autolinks become OSC 8 hyperlinks, which terminals such as kitty, WezTerm, foot,
-iTerm2, GNOME Terminal and Windows Terminal make clickable; less (566 and later, with `-R`) and fzf previews
-(0.54 and later) pass them on. Reference links stay plain text: Neovim's highlights query attaches no URL to
+Markdown inline links and autolinks become OSC 8 hyperlinks, clickable in terminals that support them, with one
+`id` per URI so that a link wrapped over rows stays one link. `less -R` (tested with 668) and fzf previews (since
+0.55 by fzf's changelog, tested with 0.74) pass them on. Reference links stay plain text: Neovim's highlights query attaches no URL to
 them. So does a link whose URL has a control byte, which could otherwise send escape sequences to the terminal
 (in the `nvim` pager too).
 `--hyperlinks` (or the `hyperlinks` config key, `NVCAT_HYPERLINKS`) chooses: `auto` (the default) emits
-them unless the output may go to a pager command other than less, which might print them as text; `always`
-and `never` do what they say. In the `nvim` pager, Neovim emits the links itself.
+them unless a pager command other than less may show the output (a terminal, a complete document, outside fzf and
+Neovim), which might print them as text; `always` and `never` do what they say. In the `nvim` pager, Neovim emits the links itself.
 
 ### Limits and fallback
 
@@ -350,7 +362,8 @@ filetype through the configured Neovim), `pager.bats` (the built-in Neovim pager
 `paging.bats` (external pagers), `fallback.bats` (every limit), `config.bats`, `timings.bats` (`--timings`,
 `--syntax`), `dependencies.bats` (query mismatches, missing dependencies), `inputs.bats` (extension case,
 symbolic links, unreadable and empty inputs), `version.bats`,
-`benchmarks.bats` (the benchmark scripts), `attributes.bats` (underline styles, hyperlinks),
+`benchmarks.bats` (the benchmark scripts), `completions.bats` (shell completion; fish only where it is installed),
+`attributes.bats` (underline styles, hyperlinks),
 `reference.bats` (the reference documents at 40, 80 and 120 columns; wide, combining and emoji cells),
 `robustness.bats`
 (tails, viewports, filenames, stdin, modelines, errors, terminal round trip, signal cleanup, immutability,

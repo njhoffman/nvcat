@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import signal
 import struct
@@ -82,6 +83,15 @@ def until(marker, start, what):
   print(f"ok {what}", flush=True)
 
 
+def links():
+  """The OSC 8 sequence of the link in the second file must come through fzf with its id and URI."""
+  deadline = time.monotonic() + 15
+  while not re.search(rb"\x1b\]8;id=\d+;https?://", captured):
+    if time.monotonic() > deadline or not read(0.1):
+      raise SystemExit("fzf preview dropped the OSC 8 hyperlinks")
+  print("ok fzf passes OSC 8 hyperlinks with their id", flush=True)
+
+
 def press(keys):
   """Send keys, then Ctrl-L (fzf's clear-screen): fzf repaints only changed cells, which can split a marker
   across escape sequences, so force a full repaint before searching the output."""
@@ -97,6 +107,7 @@ try:
   until(markers[0][1], press(b"\x05"), "preview scrolled to the bottom")
   until(markers[0][0], press(b"\x19"), "preview scrolled back to the top")
   until(markers[1][0], press(b"\x1b[B"), "second file previewed")
+  links()
   until(markers[2][0], press(b"\x1b[B"), "third file previewed")
   before = len(log.read_text().splitlines())
   fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))

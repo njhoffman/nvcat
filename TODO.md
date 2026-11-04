@@ -53,9 +53,10 @@ Reviewed: 2026-11-03
   render is ignored. The router reads files under 512 lines with `mapfile` (a `tail` fork cost 2-3 ms).
   0.18.0: "does not render" became "Neovim cannot highlight", after `fzfrc`'s `# vim:syn=bash:ft=` went to
   bat as plain text (bash is bat's, not one of nvcat's filetypes).
-- [ ] **examples/fzf-files without a generated router.** (p3) [bug] Since 0.16.0 a checkout has no
+- [x] **examples/fzf-files without a generated router.** (p3) [bug] Since 0.16.0 a checkout has no
   `nvcat-dispatch` until `just install` or `just dispatch`; the example then shows a "No such file" error
   in every preview. Check for it at start and print the command to run (or run `./gen-dispatch`).
+  Done in 0.23.0: it says what to run and exits 1 before fzf starts.
 - [x] **`--lines 1` always times out.** (p2) [bug] Neovim's smallest grid is two rows ('lines' minimum 2), so
   `wait_ready` waits for a one-row frame that never comes and the render falls back to bat after `--timeout`
   (any file; also in 0.18.0). A one-line fzf preview window hits it. Attach and resize with at least two rows
@@ -78,18 +79,28 @@ Reviewed: 2026-11-03
   every run ended in `ModuleNotFoundError`, `--version` included (0.18 too, through `import config`).
   Done in 0.21.2: the entry point adds the directory of its real path. `gen-dispatch` and `gen-filetypes` still
   need it unset.
-- [ ] **`auto` hyperlinks are off when no pager runs.** (p3) [bug] `hyperlinks()` checks only the configured
+- [x] **`auto` hyperlinks are off when no pager runs.** (p3) [bug] `hyperlinks()` checks only the configured
   pager, so `NVCAT_PAGER=more` drops links from piped output, `--lines` viewports and fzf previews too. Use
   `wants_pager()`, which already knows these cases.
-- [ ] **OSC 8 URLs are not normalized.** (p3) [bug] The OSC 8 convention limits a URI to bytes 32-126, but
+  Done in 0.23.0: `hyperlinks()` asks `wants_pager()`.
+- [x] **OSC 8 URLs are not normalized.** (p3) [bug] The OSC 8 convention limits a URI to bytes 32-126, but
   non-ASCII URLs go out raw, bidi controls such as U+202E included. `[t](<http://c/a b>)` keeps its angle brackets
   and space, so the link is wrong. Strip the brackets and percent-encode the rest.
-- [ ] **A wrapped link is several links.** (p3) [feature] A link wrapping over rows gets a separate OSC 8 pair on
+  Done in 0.23.0: `link_target()` strips the brackets and percent-encodes the rest; `filter_link_urls` does the same
+  in the `nvim` pager.
+- [x] **A wrapped link is several links.** (p3) [feature] A link wrapping over rows gets a separate OSC 8 pair on
   each row, so terminals underline and hover only one part. Add an `id=` per link, per the OSC 8 convention.
-- [ ] **Verify the README's hyperlink support claims.** (p3) [docs] "fzf previews (0.54 and later)" and the list
+  Done in 0.23.0: one `id=` per URI. In the `nvim` pager Neovim writes its own `id`.
+- [x] **Verify the README's hyperlink support claims.** (p3) [docs] "fzf previews (0.54 and later)" and the list
   of terminals came from memory, not a test; only less 668 was checked. Add OSC 8 to `tests/fzf.bats` or
   reword.
-- [ ] **requirements.txt still says `make deps`.** (p3) [docs] It is `just deps` since 0.13.0.
+  Done in 0.23.0: fzf's changelog says 0.55, not 0.54; `tests/fzf.bats` checks OSC 8 with an id through fzf 0.74. The README no
+  longer names terminals, since none was tested, and gives less 668 as tested instead of "566 and later".
+- [ ] **Run the fish completion test.** (p3) [test] `nvcat completions fish` (0.23.0) has never been loaded in fish: it
+  was not installed where it was written, so `tests/completions.bats` skips it. Run that test where fish is installed.
+- [ ] **Install completions with `just install`.** (p3) [feature] `nvcat completions SHELL` only prints a script; each
+  user wires it up by hand. Consider a `just completions` that writes it to the shell's standard directory.
+- [x] **requirements.txt still says `make deps`.** (p3) [docs] It is `just deps` since 0.13.0.
 
 ## Performance
 

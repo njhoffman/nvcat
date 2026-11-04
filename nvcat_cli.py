@@ -280,6 +280,17 @@ UNDERLINES = {"underline": "4", "underdouble": "4:2", "undercurl": "4:3", "under
 # A link's URL comes from the document and goes to the terminal: with a control byte in it (C0, DEL or C1) it could
 # end the OSC 8 sequence and send any other, so such a link is left out.
 CONTROL_BYTES = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+NOT_URI_BYTES = re.compile(rb"[^\x21-\x7e]")  # OSC 8 allows bytes 32-126; a space is not valid in a URI either.
+
+
+def link_target(url):
+  """The URI to write in an OSC 8 hyperlink for a link's url, or None to leave the link out: without its
+  Markdown <angle brackets>, the rest percent-encoded."""
+  if not url or CONTROL_BYTES.search(url):
+    return None
+  if url.startswith("<") and url.endswith(">"):
+    url = url[1:-1]
+  return NOT_URI_BYTES.sub(lambda byte: b"%%%02X" % byte[0][0], url.encode()).decode() or None
 
 
 class Renderer:
@@ -493,6 +504,9 @@ class Renderer:
   def ansi(self, rows):
     output = []
     sequences = {}
+    targets = {}
+    # One id per URI: terminals treat the cells of a link wrapped over rows as one link only with an id.
+    ids = {}
     for row in self.grid[:rows]:
       end = len(row)
       while end:
@@ -508,12 +522,12 @@ class Renderer:
           continue  # Continuation cell of a wide glyph; the glyph itself occupies both columns.
         if highlight != current:
           if highlight not in sequences:
-            sequences[highlight] = self.sgr(self.highlights.get(highlight, {}))
-          url = self.highlights.get(highlight, {}).get("url") if self.hyperlinks else None
-          if url and CONTROL_BYTES.search(url):
-            url = None
+            attrs = self.highlights.get(highlight, {})
+            sequences[highlight] = self.sgr(attrs)
+            targets[highlight] = link_target(attrs.get("url")) if self.hyperlinks else None
+          url = targets[highlight]
           if url != link:
-            output.append(f"\x1b]8;;{url or ''}\x1b\\")
+            output.append(f"\x1b]8;id={ids.setdefault(url, len(ids) + 1)};{url}\x1b\\" if url else "\x1b]8;;\x1b\\")
             link = url
           output.append(sequences[highlight])
           current = highlight
@@ -645,15 +659,16 @@ def should_page(mode, complete, output):
 HYPERLINKS = ["auto", "always", "never"]
 
 
-def hyperlinks(mode, pager, paging):
+def hyperlinks(mode, pager, paging, complete=True):
   """Whether to emit OSC 8 hyperlinks. auto: yes, unless the output may go to a pager command other than less
-  (less passes them on with -R since version 566; another pager may print them as text)."""
+  (less passes them on with -R; another pager may print them as text). The output's height is not known yet, so
+  a short document that ends up printed is treated like one that is paged."""
   mode = mode or "auto"
   if mode not in HYPERLINKS:
     raise PreviewError(f"hyperlinks must be one of {', '.join(HYPERLINKS)}, not {mode!r}")
   if mode != "auto":
     return mode == "always"
-  return paging == "never" or pager == "nvim" or os.path.basename(pager[0]) == "less"
+  return pager == "nvim" or os.path.basename(pager[0]) == "less" or not wants_pager(paging, complete)
 
 
 def resolve_pager(value):
@@ -823,7 +838,8 @@ def environment_number(parser, name):
 def main():
   timings = Timings()
   timings.since("python imports", STARTED)
-  parser = argparse.ArgumentParser(description=__doc__)
+  parser = argparse.ArgumentParser(description=__doc__, epilog="nvcat completions bash|zsh|fish prints a shell "
+                                   "completion script.")
   if sys.argv[1:] == ["--check"]:
     return check()
   if sorted(sys.argv[1:]) == ["--all", "--check"]:
@@ -876,6 +892,9 @@ def main():
                       help="After rendering, print per-phase timings and peak memory to stderr")
   report.add_argument("--timings-json", dest="timings", action="store_const", const="json",
                       help="Like --timings, as one JSON object")
+  # `completions SHELL` is two arguments, so it cannot be a file; `nvcat completions` alone still opens one of that name.
+  if sys.argv[1:2] == ["completions"] and (len(sys.argv) == 3 or not os.path.exists("completions")):
+    return print_completions(parser, sys.argv[2:])
   args = parser.parse_args()
   if args.filetypes:
     return list_filetypes()
@@ -919,6 +938,14 @@ def list_filetypes():
   return 0
 
 
+def print_completions(parser, arguments):
+  import completions
+  if len(arguments) != 1 or arguments[0] not in completions.SHELLS:
+    parser.error(f"completions needs one shell: {', '.join(completions.SHELLS)}")
+  sys.stdout.write(completions.script(arguments[0], parser))
+  return 0
+
+
 def emit_timings(form, timings):
   text = json.dumps(timings.report()) + "\n" if form == "json" else timings.table()
   sys.stderr.write(text)
@@ -937,7 +964,6 @@ def run(args, timings):
   if args.nvim:
     settings["nvim"] = args.nvim
   pager = resolve_pager(args.pager or settings["pager"])
-  links = hyperlinks(args.hyperlinks or settings["hyperlinks"], pager, args.paging)
   width = args.columns or args.fzf_columns or shutil.get_terminal_size().columns
   fzf_lines = args.fzf_lines
   all_rows = args.all or (args.lines is None and not fzf_lines and args.start_line == 1)
@@ -950,6 +976,7 @@ def run(args, timings):
     if args.lines is not None or args.start_line != 1:
       raise PreviewError("--paging=always pages the complete document; remove --lines and --start-line")
     all_rows = True
+  links = hyperlinks(args.hyperlinks or settings["hyperlinks"], pager, args.paging, all_rows)
   paths = find_paths(settings)
   start = timings.since("config", start)
   with run_directory() as temporary:

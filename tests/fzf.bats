@@ -8,7 +8,7 @@
     run timeout 120 python3 "$BATS_TEST_DIRNAME/helpers/fzf_session.py" \
     "$reference/tables.md" "$reference/syntax.md" "$reference/extended.md"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ "$(grep -c '^ok ' <<<"$output")" -eq 8 ]
+  [ "$(grep -c '^ok ' <<<"$output")" -eq 9 ]
 }
 
 # fzf quotes {} for the shell, so these names reach the previewer intact; `--` keeps a leading `-` from being
@@ -56,6 +56,18 @@ setup_names() {
   run_fzf "$work/list" "$BATS_TEST_DIRNAME/../nvcat --lines 1 --start-line {2} -- {1}" --delimiter '\t'
   grep -q MARK_HEADING "$work/out" || { cat "$work/out"; return 1; }
   ! grep -q '^line' "$work/out"
+}
+
+@test "examples/fzf-files: without a generated router it says what to run, and fzf does not start" {
+  stubs=$BATS_TEST_TMPDIR/stubs
+  mkdir -p "$stubs"
+  printf '#!/bin/sh\necho fzf started\n' > "$stubs/fzf"
+  chmod +x "$stubs/fzf"
+  NVCAT_DISPATCH=$BATS_TEST_TMPDIR/missing PATH="$stubs:$PATH" run "$BATS_TEST_DIRNAME/../examples/fzf-files" \
+    "$BATS_TEST_TMPDIR"
+  [ "$status" -eq 1 ]
+  [[ $output == *"$BATS_TEST_TMPDIR/missing not found; run 'just dispatch'"* ]]
+  [[ $output != *'fzf started'* ]]
 }
 
 @test "examples/fzf-files: fzf accepts its options and lists the directory's files" {

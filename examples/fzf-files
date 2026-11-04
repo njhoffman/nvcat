@@ -13,6 +13,11 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 dispatch=${NVCAT_DISPATCH:-$here/nvcat-dispatch}
+if [[ ! -x $dispatch ]]; then
+  # Generated per machine, so a fresh checkout has none; without it every preview would show an error.
+  echo "fzf-files: $dispatch not found; run 'just dispatch' in $here (or set NVCAT_DISPATCH)" >&2
+  exit 1
+fi
 cd "${1:-.}"
 
 list_files() {

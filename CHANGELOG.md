@@ -6,6 +6,31 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-03
+
+### Added
+
+- `nvcat completions bash|zsh|fish` prints a shell completion script, generated from nvcat's own options. The bash
+  and zsh scripts are tested by completing in those shells; the fish script has a test that runs only where fish is
+  installed, and has not been run yet.
+- A link wrapped over rows is one link to the terminal: each URI has an OSC 8 `id`, so hover and underline cover
+  all of it.
+
+### Changed
+
+- Link targets are normalized, in printed output and in the `nvim` pager: `[t](<http://x/a b>)` loses its angle
+  brackets, and spaces and non-ASCII characters are percent-encoded, so those links now open the right address.
+- `examples/fzf-files` without a generated `nvcat-dispatch` says what to run and exits, instead of showing an error
+  in every preview.
+
+### Fixed
+
+- `--hyperlinks auto` left links out whenever a pager command other than less was configured, even when no pager runs:
+  piped output, `--lines` viewports and fzf previews now keep them.
+- `requirements.txt` named `make deps`; it is `just deps`.
+- The README overstated what was tested and gave the wrong fzf version: hyperlinks arrived in fzf 0.55. It no longer
+  lists terminals; `tests/fzf.bats` now checks links through a real fzf.
+
 ## [0.22.0] - 2026-11-03
 
 ### Added
