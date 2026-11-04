@@ -6,6 +6,21 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-11-03
+
+### Security
+
+- A Markdown link could send terminal escape sequences: 0.21.0 wrote the link's URL into the OSC 8 hyperlink
+  unfiltered, so previewing an untrusted file could, for example, change the window title. A link whose URL has
+  a control byte (C0, DEL or C1) now stays plain text, whatever `--hyperlinks` says.
+- The built-in `nvim` pager had the same problem in every earlier version with it, whatever `--hyperlinks` says.
+  It now drops such URLs (and invalid UTF-8); clean links keep working. If you run an older nvcat, update.
+
+### Fixed
+
+- `--lines 1` (and a one-line fzf preview) timed out and fell back to bat on every file: Neovim's screen is at
+  least two rows, so nvcat waited for a one-row frame that never came. It now renders two rows and prints one.
+
 ## [0.21.0] - 2026-11-03
 
 ### Added

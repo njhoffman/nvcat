@@ -134,7 +134,7 @@ compares the output with the index on and off. One behavior differs: the stock l
 line toward the skip-ahead position it returns, so that position is behind the line and Neovim calls again for
 the next line. Narrowed, it is the next capture or tree start, so Neovim makes fewer calls.
 
-The upstream fix is the same index inside Neovim ([draft issue](upstream/neovim-treesitter-injection-cost.md)).
+The upstream fix is the same index inside Neovim ([neovim#42675](https://github.com/neovim/neovim/issues/42675)).
 Until then the patch depends on private internals: it checks each one, stays off when one is missing, and
 reports the reason as `highlight_index` in `--timings`. Rerun `benchmarks/highlighter` after a Neovim upgrade.
 

@@ -207,6 +207,20 @@ local function uses(fn, names)
   end
 end
 
+-- The highlighter's link url comes from the document, and one with a control byte (or invalid UTF-8) is not safe to
+-- send to a terminal. Printed output filters them in nvcat_cli.py; for the pager, which Neovim draws, drop them where
+-- the highlighter hands them over.
+function M.filter_link_urls()
+  local set_extmark = vim.api.nvim_buf_set_extmark
+  vim.api.nvim_buf_set_extmark = function(buf, ns, row, col, opts)
+    local url = opts.url
+    if url and (url:find("[%c\127]") or url:find("\194[\128-\159]") or vim.fn.iconv(url, "utf-8", "utf-8") == "") then
+      opts.url = nil
+    end
+    return set_extmark(buf, ns, row, col, opts)
+  end
+end
+
 function M.index_highlighter()
   if vim.env.NVCAT_HIGHLIGHT_INDEX == "0" then
     return "off"
@@ -358,6 +372,9 @@ function M.setup(channel, paths)
     package.path = paths.lua_path .. "/?.lua;" .. paths.lua_path .. "/?/init.lua;" .. package.path
   end
   start = lap("setup: runtimepath", start)
+  if not channel then
+    M.filter_link_urls()
+  end
   M.highlight_index = M.index_highlighter()
   start = lap("setup: highlighter index", start)
   vim.cmd("highlight clear")

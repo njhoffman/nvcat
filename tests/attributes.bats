@@ -49,6 +49,33 @@ EOF
   done <<<"$output"
 }
 
+@test "a link whose URL has control bytes cannot send escapes: it stays text, other links still work" {
+  doc=$BATS_TEST_TMPDIR/evil.md
+  printf '%b\n\n' \
+    '[osc](http://a.example/\e]0;PWNED\ab)' \
+    '[bel](http://b.example/\aPWNED)' \
+    '[st](http://c.example/\e\\PWNED)' \
+    '[csi](http://d.example/\e[31mPWNED)' \
+    '[c1](http://e.example/\xc2\x9d0;PWNED)' \
+    '[del](http://f.example/\x7fPWNED)' \
+    '<http://g.example/\e]0;PWNED\a>' \
+    '[fine](http://ok.example/)' > "$doc"
+  for mode in auto always; do
+    run --separate-stderr "$NVCAT" --paging=never --fallback none --hyperlinks "$mode" --columns 80 --all "$doc"
+    [ "$status" -eq 0 ] || { echo "$mode: $stderr"; return 1; }
+    [[ $output != *$'\a'* ]] || { echo "$mode: BEL in output"; return 1; }
+    [[ $output != *$'\e]0;'* ]] || { echo "$mode: OSC 0 in output"; return 1; }
+    [[ $output != *$'\xc2\x9d'* ]] || { echo "$mode: C1 in output"; return 1; }
+    [[ $output != *$'\x7f'* ]] || { echo "$mode: DEL in output"; return 1; }
+    # The only OSC 8 targets left are the clean link's, and the link texts still show.
+    targets=$(grep -ao $'\e]8;;[^\e]\+' <<<"$output" | sort -u)
+    [ "$targets" = $'\e]8;;http://ok.example/' ] || { echo "$mode: targets: $targets" | cat -v; return 1; }
+    for text in osc bel st csi c1 del fine; do
+      [[ $output == *"$text"* ]] || { echo "$mode: '$text' missing"; return 1; }
+    done
+  done
+}
+
 @test "--hyperlinks never and NVCAT_HYPERLINKS=never emit no OSC 8" {
   run --separate-stderr "$NVCAT" --paging=never --hyperlinks never --columns 80 --all "$SYNTAX"
   [ "$status" -eq 0 ]

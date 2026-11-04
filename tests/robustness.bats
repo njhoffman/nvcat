@@ -38,6 +38,23 @@ plain() {
   done
 }
 
+@test "a one-row viewport renders one row (Neovim's grid is at least two)" {
+  run --separate-stderr "$NVCAT" --paging=never --fallback none --timeout 8 --columns 40 --lines 1 \
+    "$REFERENCE/extended.md"
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [ "${#lines[@]}" -eq 1 ]
+  [[ $(plain "$output") == *REFERENCE_EXTENDED_TOP* ]]
+  run --separate-stderr "$NVCAT" --paging=never --fallback none --timeout 8 --columns 40 --lines 1 \
+    --start-line 18 "$REFERENCE/extended.md"
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [ "${#lines[@]}" -eq 1 ]
+  [[ $(plain "$output") == *Emanote* ]]
+  FZF_PREVIEW_COLUMNS=40 FZF_PREVIEW_LINES=1 run --separate-stderr "$NVCAT" --fallback none --timeout 8 \
+    "$REFERENCE/syntax.md"
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [ "${#lines[@]}" -eq 1 ]
+}
+
 @test "literal filenames with spaces, pipes, hashes, percents and brackets, plus Unicode" {
   special="$BATS_TEST_TMPDIR/name with spaces | # % [brackets].md"
   printf '# Unicode preview\n\n日本語 café e\xcc\x81 🙂\n\nEND_UNICODE\n' > "$special"

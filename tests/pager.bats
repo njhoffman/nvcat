@@ -29,6 +29,14 @@ session() {
   session keys "$DOCUMENT"
 }
 
+@test "a link whose URL has control bytes sends no escapes; clean links stay links" {
+  doc=$BATS_TEST_TMPDIR/evil.md
+  printf '%b\n\n' '[one](http://a.example/\e]0;PWNED\ab)' '[two](http://b.example/\aPWNED)' \
+    '[three](http://c.example/\xc2\x9dPWNED)' '[four](http://d.example/\x9dPWNED)' \
+    '[fine](http://ok.example/)' 'END_LINKS' > "$doc"
+  session unsafe-links "$doc" --paging=always
+}
+
 @test "--syntax regex reaches the pager: raw Markdown with Vim's syntax" {
   session regex "$DOCUMENT" --syntax regex
 }

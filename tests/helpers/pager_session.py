@@ -128,6 +128,19 @@ def finish(expected):
     time.sleep(0.05)
 
 
+if scenario == "unsafe-links":
+  # A URL's control bytes must not reach the terminal, and clean links still must.
+  until("END_LINKS", 0, "the document")
+  quiet()
+  if b"http://ok.example/" not in captured:
+    fail("the clean link has no OSC 8 sequence")
+  if b"PWNED" in captured or b"\x1b]0;" in captured:
+    fail("a URL's control bytes reached the terminal")
+  press("q")
+  finish(lambda status: status == 0)
+  print("ok")
+  sys.exit(0)
+
 if scenario == "follow-open":
   # --follow on a large file opens at its end.
   until("PAGER_BOTTOM", 0, "the end of the file", timeout=40)

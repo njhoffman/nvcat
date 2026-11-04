@@ -19,11 +19,11 @@ Reviewed: 2026-11-03
   `SYNTAX.md`-sized tables render instead of falling back. Fragile: private internals of a dev build, so
   feature-detect the fields, keep the unpatched path as fallback, and add a test that fails loudly when the
   internals change. Prefer the upstream fix if it lands.
-- [ ] **File the Neovim issue.** (p2) [chore] Draft and `nvim --clean` repro in
-  `docs/upstream/neovim-treesitter-injection-cost.md`, now with the 0.15.0 prototype's numbers. `gh` is
-  authenticated (2026-11-03); search for duplicates first, then link the issue here. Once fixed upstream,
-  keep `index_highlighter` off for the fixed versions (`tests/highlighter.bats` expects `on` for 0.12+) and drop
-  the workaround notes.
+- [x] **File the Neovim issue.** (p2) [chore] Filed 2026-11-03 as
+  https://github.com/neovim/neovim/issues/42675 (the redraw path; the `conceal_lines` half is already #39699).
+  Text and scripts in `docs/upstream/neovim-treesitter-injection-cost.md`.
+- [ ] **Drop `index_highlighter` once Neovim fixes #42675.** (p3) [chore] Keep it off for the fixed versions
+  (`tests/highlighter.bats` expects `on` for 0.12+) and drop the workaround notes.
 - [x] **Non-numeric fzf size variables give a raw ValueError.** (p3) [bug] `int(os.environ["FZF_PREVIEW_COLUMNS"])`
   in `nvcat` main() prints `invalid literal for int()`; report which variable was bad instead.
 - [x] **less shows Nerd Font icons as `<U+F0CA3>`.** (p1) [bug] less treats Private Use Area code points as
@@ -56,10 +56,39 @@ Reviewed: 2026-11-03
 - [ ] **examples/fzf-files without a generated router.** (p3) [bug] Since 0.16.0 a checkout has no
   `nvcat-dispatch` until `just install` or `just dispatch`; the example then shows a "No such file" error
   in every preview. Check for it at start and print the command to run (or run `./gen-dispatch`).
-- [ ] **`--lines 1` always times out.** (p2) [bug] Neovim's smallest grid is two rows ('lines' minimum 2), so
+- [x] **`--lines 1` always times out.** (p2) [bug] Neovim's smallest grid is two rows ('lines' minimum 2), so
   `wait_ready` waits for a one-row frame that never comes and the render falls back to bat after `--timeout`
   (any file; also in 0.18.0). A one-line fzf preview window hits it. Attach and resize with at least two rows
   and emit the requested count, with a test for `--lines 1`.
+  Done in 0.21.1: the grid has at least two rows (`MIN_GRID_ROWS`) and one is emitted.
+- [x] **A Markdown link can inject terminal escapes.** (p1) [bug] Since 0.21.0 `ansi()` writes the `url` from
+  Neovim's highlight into the OSC 8 sequence unfiltered, and the URL comes from the document. A link such as
+  `[x](http://a/<ESC>]0;PWNED<BEL>b)` reaches the terminal with its control bytes intact, so previewing an
+  untrusted file can set the window title or send any other sequence, and BEL or `ESC \` ends the OSC early.
+  Reproduced 2026-11-03. Omit the hyperlink for a URL with C0, DEL or C1 bytes, whatever `--hyperlinks` says,
+  and test ESC, BEL and ST in inline links and autolinks.
+  Done in 0.21.1: such a link stays plain text (`CONTROL_BYTES`, `tests/attributes.bats`), and
+  `filter_link_urls` in `profile.lua` drops those URLs in the `nvim` pager (`tests/pager.bats`).
+- [ ] **A Neovim that dies at start can exit 0 with no output.** (p2) [bug] When Neovim has already exited,
+  `Renderer._close()` gets `BrokenPipeError` from `process.stdin.close()`, which replaces the real error; the
+  top-level handler takes it for a closed stdout and exits 0. About 1 run in 10 with a stub that exits at once
+  (6 of 60, 2026-11-03), so a blank preview with no bat fallback, and `tests/dependencies.bats` flakes. Guard the
+  close in `_close()` and keep the original exception.
+- [ ] **`PYTHONSAFEPATH` breaks nvcat.** (p2) [bug] Since 0.20.0 the entry point imports `nvcat_cli` through
+  `sys.path[0]`, which `PYTHONSAFEPATH=1` removes: `ModuleNotFoundError` on every run, `--version` included.
+  Insert the real directory of `__file__` into `sys.path` in `nvcat`, without losing the start-up saving.
+- [ ] **`auto` hyperlinks are off when no pager runs.** (p3) [bug] `hyperlinks()` checks only the configured
+  pager, so `NVCAT_PAGER=more` drops links from piped output, `--lines` viewports and fzf previews too. Use
+  `wants_pager()`, which already knows these cases.
+- [ ] **OSC 8 URLs are not normalized.** (p3) [bug] The OSC 8 convention limits a URI to bytes 32-126, but
+  non-ASCII URLs go out raw, bidi controls such as U+202E included. `[t](<http://c/a b>)` keeps its angle brackets
+  and space, so the link is wrong. Strip the brackets and percent-encode the rest.
+- [ ] **A wrapped link is several links.** (p3) [feature] A link wrapping over rows gets a separate OSC 8 pair on
+  each row, so terminals underline and hover only one part. Add an `id=` per link, per the OSC 8 convention.
+- [ ] **Verify the README's hyperlink support claims.** (p3) [docs] "fzf previews (0.54 and later)" and the list
+  of terminals came from memory, not a test; only less 668 was checked. Add OSC 8 to `tests/fzf.bats` or
+  reword.
+- [ ] **requirements.txt still says `make deps`.** (p3) [docs] It is `just deps` since 0.13.0.
 
 ## Performance
 
@@ -110,6 +139,9 @@ Reviewed: 2026-11-03
   `benchmarks/run` then records warm-worker results as their own mode, apart from fresh starts.
 - [ ] (p3) [perf] Add caching only if measurements justify it; include viewport, file content, theme, configuration, and parser versions.
   `benchmarks/run` then records cache hits as their own mode, apart from renders.
+- [ ] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
+  like a failed render, while `benchmarks/highlighter` exits 2 for the same case. Exit 2 here too. On
+  2026-11-03 other processes held the load at 8-23 for the whole 15 minutes.
 
 ## Rendering fidelity and larger documents
 
@@ -129,6 +161,24 @@ Reviewed: 2026-11-03
 - [x] (p2) [docs] Define memory and parsing limits before claiming streaming or large-file support.
   README "Limits and fallback": no streaming, viewport time and memory by input size. Table-heavy input is
   measured by `benchmarks/highlighter` (a 600-row table, 0.15.0).
+- [ ] **The routing speed tests fail under load.** (p3) [test] `tests/dispatch.bats` holds "routing is fast" to an
+  absolute 20 ms average and "routing a file nvcat does not handle stays fast" to 30 ms. On 2026-11-03 the first
+  failed at load 17, and both at load 20+ (the first passed alone at 4.7). Compare with a baseline measured in
+  the same test, such as a `bash -c :` start, or use a looser limit.
+- [ ] **"Neovim left running" can blame an unrelated nvcat.** (p3) [test] `embedded_nvims()` matches every embedded
+  Neovim using this checkout's `profile.lua` on the machine, and the installed `nvcat` links to this checkout, so a
+  render from another shell during a test probably explains the one failure of `--syntax regex reaches the
+  pager` on 2026-11-03 (5 of 5 passed alone). Track only descendants of the test's own nvcat.
+- [ ] **fzf sometimes does not exit in `tests/fzf.bats`.** (p3) [test] Once on 2026-11-03, fzf had not exited 10 s after
+  ESC at the end of the session test, at load 3 (`TimeoutExpired` in `fzf_session.py`); every rendering check before
+  it passed. It then passed 6 of 6, as did 0.21.0. Cause unknown: find out whether a preview ignores cancellation.
+- [ ] **Run `tests/nvim-versions` for 0.19.0-0.21.x.** (p2) [test] `docs/RELEASING.md` requires it for each release;
+  it did not run for these, so the released 0.11 and 0.12 are unchecked for OSC 8 `url` attributes, underline
+  styles and the two-row grid. Add `attributes` and `reference` to its `DEFAULT_TESTS`, which lacks them.
+- [ ] **The suite runs only on a configured machine.** (p3) [test] There is no CI, and most test files use the
+  developer's `config.toml`, theme and render-markdown options; a default-options bug hid behind that until
+  0.21.0. Run the suite with an empty config (as `reference.bats` does for options), then add a CI job with
+  pinned Neovim and plugins.
 
 ## Filetype support
 

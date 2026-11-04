@@ -184,7 +184,9 @@ terminal without them shows a plain underline or ignores them.
 Markdown inline links and autolinks become OSC 8 hyperlinks, which terminals such as kitty, WezTerm, foot,
 iTerm2, GNOME Terminal and Windows Terminal make clickable; less (566 and later, with `-R`) and fzf previews
 (0.54 and later) pass them on. Reference links stay plain text: Neovim's highlights query attaches no URL to
-them. `--hyperlinks` (or the `hyperlinks` config key, `NVCAT_HYPERLINKS`) chooses: `auto` (the default) emits
+them. So does a link whose URL has a control byte, which could otherwise send escape sequences to the terminal
+(in the `nvim` pager too).
+`--hyperlinks` (or the `hyperlinks` config key, `NVCAT_HYPERLINKS`) chooses: `auto` (the default) emits
 them unless the output may go to a pager command other than less, which might print them as text; `always`
 and `never` do what they say. In the `nvim` pager, Neovim emits the links itself.
 

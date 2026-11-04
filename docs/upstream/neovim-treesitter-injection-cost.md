@@ -1,86 +1,116 @@
-# Draft Neovim issue: Tree-sitter highlighting cost grows with lines x injected trees
+# Neovim issue: Tree-sitter redraw cost grows with lines x injected trees
 
-Status: not filed yet (`gh` was not authenticated). File at https://github.com/neovim/neovim/issues after
-searching for duplicates.
+Filed 2026-11-03 as https://github.com/neovim/neovim/issues/42675. Duplicate search that day: #39699 (open)
+covers the `conceal_lines` / `_on_conceal_line` half of the original draft, so the issue is limited to the
+redraw path and links it. #22426 is the general Tree-sitter performance tracking issue.
+
+Scripts: [measure-redraw.lua](measure-redraw.lua) (inlined in the issue) and
+[measure-text-height.lua](measure-text-height.lua) (the `conceal_lines` measurement, now #39699's subject).
 
 ## Title
 
-treesitter: per-line highlighter work scales with the number of injected trees (large Markdown tables)
+treesitter: highlighter visits every injected tree for every drawn line (slow redraw of large Markdown tables)
 
-## Problem
+## Body
+
+### Problem
 
 Markdown injects one `markdown_inline` tree per paragraph and per `pipe_table_cell`, so a 600-row, 4-column
-table produces 2,405 trees. Two paths in `runtime/lua/vim/treesitter/highlighter.lua` do work proportional to
-the number of trees for every screen line:
+table has 2,405 trees. For every drawn line, `on_range_impl` in `runtime/lua/vim/treesitter/highlighter.lua`
+runs `for_each_highlight_state` over all of them and tests each tree root against the range, so a redraw
+costs drawn lines x trees, whether or not the trees are anywhere near the screen.
 
-1. `conceal_lines`: the bundled `queries/markdown/highlights.scm` sets `conceal_lines` on fenced code block
-   delimiters and info strings. That enables `TSHighlighter._on_conceal_line`, which for each line calls
-   `tree:parse({row, row + 1})`, `prepare_highlight_states(row, row)` and `on_range_impl`, all of which visit
-   every tree. `nvim_win_text_height()` therefore grows roughly quadratically with table size.
-2. Redraw: `on_range_impl` runs `for_each_highlight_state` over all trees for each drawn line, checking
-   `Range.intercepts` against each tree root (line ~374 in this build). Combined injections avoid the tree
-   count but `included_ranges(true)` is rebuilt per call and walked per capture (lines ~391 and ~430), so the
-   cost moves rather than disappears.
+This is separate from #39699 (`conceal_lines` making `_on_conceal_line` parse and walk every tree per line):
+the redraw cost below is the same with `conceal_lines` removed from the query.
 
-## Reproduction
+A second effect of the same loop: trees that end above the range still take part in computing the
+skip-ahead position, so the position returned is behind the range and the provider is called again for the
+next line.
 
-`nvim --clean`, NVIM v0.13.0-dev-1915+gc5641b2bfb, Linux x86-64. Generate a table with N rows:
+### Steps to reproduce
 
 ```sh
 n=600
 { echo '| a | b | c | d |'; echo '|---|---|---|---|'
   for i in $(seq 1 $n); do echo "| \`f$i\` | \`.e$i\`, x | \`p\` | y |"; done; } > table$n.md
-nvim --clean -l measure-text-height.lua table$n.md                    # conceal_lines path
-NO_CONCEAL_LINES=1 nvim --clean -l measure-text-height.lua table$n.md # same, query without conceal_lines
-OUT=out.txt nvim --clean -S measure-redraw.lua table$n.md             # run in a terminal with ~300 rows
+# in a terminal with about 300 rows:
+OUT=out.txt nvim --clean -S redraw.lua table$n.md
+NO_CONCEAL_LINES=1 OUT=out.txt nvim --clean -S redraw.lua table$n.md
+cat out.txt
 ```
 
-Scripts: [measure-text-height.lua](measure-text-height.lua), [measure-redraw.lua](measure-redraw.lua).
+`redraw.lua`:
 
-## Measurements
+```lua
+if (os.getenv("NO_CONCEAL_LINES") or "") ~= "" then
+  local src = {}
+  for _, f in ipairs(vim.treesitter.query.get_files("markdown", "highlights")) do
+    src[#src + 1] = io.open(f):read("*a"):gsub('%(#set! conceal_lines ""%)', "")
+  end
+  vim.treesitter.query.set("markdown", "highlights", table.concat(src, "\n"))
+end
+vim.treesitter.start(0, "markdown")
+vim.wo.conceallevel = 2
+vim.treesitter.get_parser(0):parse(true)
+vim.cmd("redraw")
+local t0 = vim.uv.hrtime()
+for _ = 1, 3 do vim.cmd("redraw!") end
+local f = io.open(os.getenv("OUT"), "a")
+f:write(string.format("%s rows=%d conceal_lines=%s redraw!=%.0f ms (avg of 3)\n", vim.fn.expand("%"), vim.o.lines,
+  (os.getenv("NO_CONCEAL_LINES") or "") ~= "" and "removed" or "stock", (vim.uv.hrtime() - t0) / 3e6))
+f:close()
+vim.cmd("qa!")
+```
 
-`nvim_win_text_height(0, {})`, headless, `conceallevel=2`:
+`redraw!` of a 300-row screen, average of 3:
 
 | Table rows | Injected trees | Stock query | Without `conceal_lines` |
-|---|---|---|---|
-| 150 | 605 | 113 ms | 0 ms |
-| 300 | 1,205 | 337 ms | 0 ms |
-| 600 | 2,405 | 1,978 ms | 0 ms |
+|---|---:|---:|---:|
+| 150 | 605 | 242 ms | 299 ms |
+| 300 | 1,205 | 992 ms | 966 ms |
+| 600 | 2,405 | 983 ms | 1,279 ms |
 
-`redraw!` of a 300-row screen (average of 3), with or without `conceal_lines`:
+(600 rows: only the first 300 are drawn. The machine was loaded, so the absolute times vary; the growth with
+the tree count and the lack of difference between the two queries hold across runs.)
 
-| Table rows | Injected trees | `redraw!` |
-|---|---|---|
-| 150 | 605 | 174 ms |
-| 300 | 1,205 | 860 ms |
-| 600 | 2,405 | 746 ms (only the first 300 rows drawn) |
+### Expected behavior
 
-## Expected
+Per-line work proportional to the trees that intersect the line.
 
-Per-line work proportional to the trees that intersect the line, e.g. an interval index over tree root ranges
-built once per `on_win`, and `_on_conceal_line` limited to trees containing the row.
+A prototype, applied at runtime by replacing `on_range_impl` (https://github.com/njhoffman/nvcat, `profile.lua`
+`index_highlighter`): per list of highlight states, index the rows each tree root covers, and give
+`on_range_impl` only the states on the range's rows plus the next tree to start, in their original order. The
+output is byte-identical with and without it on every document tried, and the skip-ahead position becomes the
+next capture or tree start, so there are fewer `on_range` calls. Complete renders at 100 columns through an
+embedded Neovim with render-markdown.nvim:
 
-## Prototype
+| Document | Lines | Highlight states | on_range calls, stock / indexed | on_range ms, stock / indexed | Render ms, stock / indexed |
+|---|---:|---:|---:|---:|---:|
+| Markdown, 353 lines | 353 | 309 | 352 / 286 | 126 / 25 | 727 / 542 (-25%) |
+| Markdown, 888 lines | 888 | 707 | 887 / 716 | 603 / 41 | 1397 / 646 (-54%) |
+| Markdown with code fences | 546 | 125 | 545 / 504 | 79 / 30 | 523 / 495 (-5%) |
+| 600-row table above | 604 | 2,406 | 603 / 603 | 1750 / 64 | 2336 / 634 (-73%) |
 
-nvcat patches this at runtime (`index_highlighter` in nvcat's `profile.lua`): per list of highlight states it
-indexes the rows each tree root covers, and `on_range_impl` sees only the states on the range's rows plus the
-next tree to start, in their original order. Output is byte-identical with and without the patch on every
-document tried. A side effect: the stock loop includes trees that end above the range when it computes the
-skip-ahead position, so the position it returns is behind the range and the provider is called again for
-the next line; with the narrowed list the position is the next capture or tree start, and there are fewer
-`on_range` calls (352 to 286 on a 353-line document).
+### Nvim version (nvim -v)
 
-Measured with nvcat's `benchmarks/highlighter` (complete renders at 100 columns through an embedded Neovim with
-render-markdown.nvim, NVIM v0.13.0-dev-1915+gc5641b2bfb); the full table is in nvcat's docs/PERFORMANCE.md:
+NVIM v0.13.0-dev-1915+gc5641b2bfb
 
-| Document | Lines | Highlight states | on_range calls, stock / indexed | on_range, stock | on_range, indexed | Render, stock | Render, indexed | Change |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| benchmarks/medium.md | 353 | 309 | 352 / 286 | 126 | 25 | 727 | 542 | -25% |
-| benchmarks/large.md | 888 | 707 | 887 / 716 | 603 | 41 | 1397 | 646 | -54% |
-| benchmarks/code.md | 546 | 125 | 545 / 504 | 79 | 30 | 523 | 495 | -5% |
-| 600-row table (generated) | 604 | 2,406 | 603 / 603 | 1750 | 64 | 2336 | 634 | -73% |
+### Vim (not Nvim) behaves the same?
 
-## Context
+N/A (Tree-sitter)
 
-Found while rendering Markdown to ANSI through an embedded Neovim with render-markdown.nvim
-(https://github.com/njhoffman/nvcat); a 1,000-row document with large tables did not render within 120 s.
+### Operating system/version
+
+Linux 6.17, x86-64
+
+### Terminal name/version
+
+Any; measured with `nvim --clean` in a 300-row pty
+
+### $TERM environment variable
+
+xterm-256color
+
+### Installation
+
+Built from source

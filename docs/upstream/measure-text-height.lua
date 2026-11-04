@@ -1,6 +1,6 @@
 -- Draft-issue repro. Usage: [NO_CONCEAL_LINES=1] nvim --clean -l measure.lua FILE
 local file = arg[1]
-if os.getenv("NO_CONCEAL_LINES") then
+if (os.getenv("NO_CONCEAL_LINES") or "") ~= "" then
   local src = {}
   for _, f in ipairs(vim.treesitter.query.get_files("markdown", "highlights")) do
     src[#src + 1] = io.open(f):read("*a"):gsub('%(#set! conceal_lines ""%)', "")

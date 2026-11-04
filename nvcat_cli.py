@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parent
 # Neovim clamps 'lines', and so the UI grid, to 1000 rows; a taller nvim_ui_try_resize never produces the
 # requested grid. Renderer.wait_ready() names the row limit if a Neovim with a lower cap times out on it.
 MAX_ROWS = 1000
+MIN_GRID_ROWS = 2  # Neovim's smallest 'lines': a one-row viewport renders on two and emits one.
 MAX_BYTES = 10 * 1024 * 1024
 BINARY_PROBE = 8192  # Bytes checked for a NUL, as git and grep do, to treat the input as binary.
 VERSION_FILE = ROOT / "VERSION"
@@ -276,6 +277,11 @@ UNDERLINES = {"underline": "4", "underdouble": "4:2", "undercurl": "4:3", "under
               "underdashed": "4:5"}
 
 
+# A link's URL comes from the document and goes to the terminal: with a control byte in it (C0, DEL or C1) it could
+# end the OSC 8 sequence and send any other, so such a link is left out.
+CONTROL_BYTES = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
 class Renderer:
   def __init__(self, executable, paths, temporary, width, height, timeout, timings=None, syntax="auto",
                hyperlinks=True):
@@ -309,7 +315,7 @@ class Renderer:
       # --embed answers RPC at once but sources startup files only after nvim_ui_attach, so Neovim's startup
       # finishes inside the setup request; record() splits this phase with Neovim's own marks.
       channel = self.request("nvim_get_api_info")[0]
-      self.request("nvim_ui_attach", width, height,
+      self.request("nvim_ui_attach", width, max(height, MIN_GRID_ROWS),
                    {"rgb": True, "ext_linegrid": True, "ext_messages": True})
       self.request("nvim_exec_lua", "nvcat.setup(...)", [channel, paths])
       self.timings.since("startup", self.spawned)
@@ -425,6 +431,7 @@ class Renderer:
     if isinstance(opened, dict) and "unsupported" in opened:
       raise Unsupported(f"Neovim detected {opened['unsupported'] or 'no filetype'}, which nvcat does not "
                         "render with --filetype auto")
+    rows, height = height, max(height, MIN_GRID_ROWS)
     with self.timings.phase("frames: first"):
       info = self.wait_ready(self.token, width, height)
     resized = time.monotonic_ns()
@@ -449,7 +456,7 @@ class Renderer:
     self.record(info, width, height, resizes)
     for warning in info.get("warnings") or []:
       print(f"nvcat: warning: {warning}", file=sys.stderr)
-    count = min(height, info["remaining_height"])
+    count = min(height if all_rows else rows, info["remaining_height"])
     with self.timings.phase("ansi encode"):
       output = self.ansi(count)
     return output, info
@@ -496,6 +503,8 @@ class Renderer:
           if highlight not in sequences:
             sequences[highlight] = self.sgr(self.highlights.get(highlight, {}))
           url = self.highlights.get(highlight, {}).get("url") if self.hyperlinks else None
+          if url and CONTROL_BYTES.search(url):
+            url = None
           if url != link:
             output.append(f"\x1b]8;;{url or ''}\x1b\\")
             link = url
