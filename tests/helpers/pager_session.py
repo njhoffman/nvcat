@@ -129,6 +129,16 @@ def finish(expected):
     time.sleep(0.05)
 
 
+if scenario == "no-color":
+  until("PAGER_TOP", 0, "the first screen")
+  quiet()
+  if re.search(rb"\x1b\[[0-9;:]*(38|48)[;:]", captured):
+    fail("the pager shows color")
+  press("q")
+  finish(lambda status: status == 0)
+  print("ok")
+  sys.exit(0)
+
 if scenario == "unsafe-links":
   # A URL's control bytes must not reach the terminal, and clean links still must.
   until("END_LINKS", 0, "the document")

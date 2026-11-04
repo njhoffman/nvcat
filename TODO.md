@@ -101,6 +101,34 @@ Reviewed: 2026-11-03
 - [ ] **Install completions with `just install`.** (p3) [feature] `nvcat completions SHELL` only prints a script; each
   user wires it up by hand. Consider a `just completions` that writes it to the shell's standard directory.
 - [x] **requirements.txt still says `make deps`.** (p3) [docs] It is `just deps` since 0.13.0.
+- [x] **Output shown through bat can carry a file's terminal escapes.** (p2) [bug] Neovim's grid makes them harmless, but
+  bat passes them on: a file with `ESC]0;...BEL` reaches stdout unchanged through `nvcat-dispatch` for a filetype nvcat
+  does not handle, and through the fallback over the size limit (reproduced 2026-11-03, bat 0.26.1). The exposure is
+  that of plain `cat` or `bat`, but previewing untrusted files is what nvcat is for. `bat --strip-ansi=always` removes
+  them there; add it to `fallback_bat()` and `gen-dispatch`, check bat's minimum version for the flag, and test both.
+  Done in 0.24.0: bat's flag only acts with color or decorations on and leaves BEL and C1, so nvcat also filters: in Python in
+  the fallback, with `sed` in the router. Older bats lose the flag in the router, with a warning from `gen-dispatch`.
+- [x] **Error messages print file names raw.** (p2) [bug] `nvcat: {argument}: no such file` and the broken-link message
+  write control bytes from a name (or a link's target) to stderr, so a crafted name in a directory sends escapes when it
+  fails to open (both reproduced 2026-11-03). Escape control characters where errors are printed, including what
+  Neovim wrote to stderr.
+  Done in 0.24.0: `SafeStderr` wraps `sys.stderr`, which covers argparse and tracebacks as well. The router filters bat's stderr.
+- [x] **No way to turn color off.** (p2) [feature] `nvcat file | grep x` and `nvcat file > out` carry SGR codes, and
+  `NO_COLOR` is ignored, unlike bat and most cat-like tools. Add `--color auto|always|never` and honor `NO_COLOR`. `auto`
+  has to keep color in fzf previews, whose stdout is a pipe, and `nvcat-dispatch` has to keep working.
+  Done in 0.24.0: default stays always, by decision, so previewers that read a pipe keep working; `auto` is opt-in.
+- [ ] **Decide which link schemes are clickable.** (p3) [feature] `[text](file:///etc/passwd)`, `javascript:` and `ssh://`
+  all become hyperlinks, and rendering hides the target behind the text. Consider allowing only http, https and mailto by
+  default, with a setting for more. A trade-off, not a clear bug: terminals differ in what they open and whether they ask.
+- [ ] **Sourcing the zsh completion before compinit prints an error.** (p3) [bug] `source <(nvcat completions zsh)` without
+  compinit says `command not found: compdef`. The README says to load it after compinit, but the script can check for
+  `compdef` and stay quiet, as generated scripts usually do.
+- [ ] **stdin ignores modelines.** (p3) [feature] `printf '# vim: ft=lua\n...' | nvcat -` renders Markdown, because stdin is
+  always Markdown and only named files read modelines. Read the modeline from the saved stdin too; `--filetype` remains the
+  way to override it.
+- [ ] **The generated router has unreachable patterns.** (p3) [chore] `shellcheck` gives 32 warnings on `nvcat-dispatch`,
+  among them `*/*_log` after `*_log` (line 66), which can never match. `gen-dispatch` could drop globs a previous pattern
+  of the same `case` covers, for a shorter script and a clean lint.
 
 ## Performance
 
@@ -154,6 +182,11 @@ Reviewed: 2026-11-03
 - [ ] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
   like a failed render, while `benchmarks/highlighter` exits 2 for the same case. Exit 2 here too. On
   2026-11-03 other processes held the load at 8-23 for the whole 15 minutes.
+- [ ] **Add a `benchmarks/compare REF` for busy machines.** (p3) [perf] `benchmarks/run` refused three runs in a row on
+  2026-11-03, and 0.22.0 and 0.23.0 have no history rows. Twice the check became a hand-written script timing two trees in
+  alternation, which load affects equally. Make that a tool: a ref against the working tree, per sample and mode, with
+  enough rounds to tell noise from change (9 rounds showed +14% on a row that 24 showed as -7%). It reports only, and does
+  not replace recorded runs.
 
 ## Rendering fidelity and larger documents
 
@@ -235,6 +268,8 @@ Reviewed: 2026-11-03
   they are current, so another machine fails that test. Unlike the router they are worth committing (they are
   the documented coverage); consider skipping the check unless Neovim and bat match the versions recorded in
   the file.
+  Seen on 2026-11-03: installing a parser made the "generated sections are current" test fail on a clean commit until the
+  counts in SYNTAX.md were regenerated, so the test depends on the machine and not only on the change under test.
 - [x] **Render tests depend on this machine's Neovim setup.** (p2) [test] `tests/render.bats` needs the
   personal parsers and theme; skip it with a clear message when `find_paths()` reports missing dependencies.
 

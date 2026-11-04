@@ -163,7 +163,13 @@ def accepted_functions(accepted):
   ]
 
 
-def generate(first, rest, version, patterns):
+# sed scripts for bat's two streams: its stdout keeps ESC for its own SGR, and error messages quote the file name.
+UNSAFE_OUTPUT = r"s/\xc2[\x80-\x9f]|[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]//g"
+UNSAFE_ERRORS = r"s/\xc2[\x80-\x9f]|\x1b\[[0-9;:]*m|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]//g"
+
+
+def generate(first, rest, version, patterns, strips=True):
+  strip = ["  options+=(--strip-ansi=always)"] if strips else []
   """The dispatch script: entries in first are checked in stage one, rest (in order after them) in stage two."""
   entries = first + rest
   claimed = []
@@ -218,7 +224,22 @@ def generate(first, rest, version, patterns):
     "  if [[ -n $1 ]] && command -v \"${NVCAT:-nvcat}\" >/dev/null 2>&1; then",
     "    \"${NVCAT:-nvcat}\" --all --paging=never --budget=2 --filetype \"$1\" -- \"$file\" 2>/dev/null && exit 0",
     "  fi",
-    "  exec \"${BAT:-bat}\" --color=always --paging=never -- \"$file\"",
+    "  # The file's own escapes stay out of the terminal: bat's --strip-ansi needs decorations on to act without color",
+    "  # (--style=plain shows none), and leaves BEL and C1 controls, which sed removes; ESC survives only in bat's SGR.",
+    "  local color=${NVCAT_COLOR:-}",
+    "  case $color in",
+    "    never | always) ;;",
+    "    auto) if [[ -t 1 || -n ${FZF_PREVIEW_COLUMNS:-}${FZF_PREVIEW_LINES:-}${NVIM:-} ]]; then color=always; else color=never; fi ;;",
+    "    *) if [[ -n ${NO_COLOR:-} ]]; then color=never; else color=always; fi ;;",
+    "  esac",
+    "  local -a options=(--color=$color)",
+    "  [[ $color == never ]] && options+=(--decorations=always --style=plain)",
+    *strip,
+    "  \"${BAT:-bat}\" \"${options[@]}\" --paging=never -- \"$file\" \\",
+    f"    2> >(LC_ALL=C sed -E '{UNSAFE_ERRORS}' >&2) | LC_ALL=C sed -E '{UNSAFE_OUTPUT}'",
+    "  local status=${PIPESTATUS[0]}",
+    "  wait $! 2>/dev/null",
+    "  exit \"$status\"",
     "}",
     "",
     "print=0",
@@ -273,7 +294,11 @@ def main():
     version, patterns = "(not installed)", []
   entries = filetypes.ordered()
   first = [entry for entry in filetypes.load() if not entry.get("last")]
-  script, claimed = generate(first, entries[len(first):], version, patterns)
+  strips = filetypes.bat_strips_ansi()
+  if patterns and not strips:
+    print("gen-dispatch: this bat has no --strip-ansi (bat 0.25.0 and later); a file's escape sequences reach the terminal "
+          "through nvcat-dispatch's bat branch", file=sys.stderr)
+  script, claimed = generate(first, entries[len(first):], version, patterns, strips)
   if str(args.output) == "-":
     sys.stdout.write(script)
   else:

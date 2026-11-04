@@ -233,6 +233,15 @@ def find(filetype, entries=None):
   return None
 
 
+def bat_strips_ansi():
+  """Whether this machine's bat has --strip-ansi (0.25.0 and later)."""
+  import subprocess
+  try:
+    return b"--strip-ansi" in subprocess.run(["bat", "--help"], capture_output=True, check=True).stdout
+  except (OSError, subprocess.CalledProcessError):
+    return False
+
+
 def bat_patterns():
   """Return (version, [(syntax, glob)]) for every file name, path, and glob bat claims, --map-syntax included."""
   import subprocess

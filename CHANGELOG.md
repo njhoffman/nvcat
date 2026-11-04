@@ -6,6 +6,21 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-03
+
+### Added
+
+- `--color auto|always|never`, the `color` config key and `NVCAT_COLOR`, and nvcat honors `NO_COLOR` when none of them is
+  set. Color stays on by default, also when piped. With it off, output has no escape sequences, and the `nvim` pager gives
+  way to `less` (except `--follow`).
+
+### Security
+
+- Output through bat no longer carries a file's escape sequences, in the fallback and in `nvcat-dispatch`. These
+  were passed to the terminal unchanged. `gen-dispatch` warns when bat is older than 0.25.0, which lacks `--strip-ansi`.
+- Error messages show control characters in file names and in Neovim's stderr as `\xNN`, instead of sending them to the
+  terminal.
+
 ## [0.23.0] - 2026-11-03
 
 ### Added

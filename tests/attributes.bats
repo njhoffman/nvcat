@@ -14,7 +14,7 @@ setup() {
   ROOT=$(cd "$BATS_TEST_DIRNAME/.." && pwd)
   NVCAT=$ROOT/nvcat
   SYNTAX=$BATS_TEST_DIRNAME/fixtures/reference/syntax.md
-  unset NVCAT_HYPERLINKS
+  unset NVCAT_HYPERLINKS NVCAT_COLOR NO_COLOR
 }
 
 @test "underline styles and the underline color become SGR 4:N and 58:2::R:G:B" {
@@ -74,6 +74,92 @@ EOF
       [[ $output == *"$text"* ]] || { echo "$mode: '$text' missing"; return 1; }
     done
   done
+}
+
+@test "--color never, and NO_COLOR when nothing is configured: the text as laid out, with no escape at all" {
+  run --separate-stderr "$NVCAT" --paging=never --color never --columns 80 --all "$SYNTAX"
+  [ "$status" -eq 0 ]
+  [[ $output != *$'\e'* ]]
+  [[ $output == *REFERENCE_SYNTAX_BOTTOM* ]]
+  [[ $(sed -n '/ $/p' <<<"$output") == "" ]] || { echo "trailing blanks"; return 1; }
+  NO_COLOR=1 run --separate-stderr "$NVCAT" --paging=never --columns 80 --all "$SYNTAX"
+  [[ $output != *$'\e'* ]]
+  NVCAT_COLOR=never run --separate-stderr "$NVCAT" --paging=never --columns 80 --all "$SYNTAX"
+  [[ $output != *$'\e'* ]]
+}
+
+@test "color stays on by default when piped; explicit settings beat NO_COLOR, and an empty NO_COLOR is unset" {
+  unset NO_COLOR
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 "$SYNTAX"
+  [[ $output == *$'\e['* ]]
+  NO_COLOR= run --separate-stderr "$NVCAT" --paging=never --columns 80 "$SYNTAX"
+  [[ $output == *$'\e['* ]]
+  NO_COLOR=1 run --separate-stderr "$NVCAT" --paging=never --color always --columns 80 "$SYNTAX"
+  [[ $output == *$'\e['* ]]
+  NO_COLOR=1 NVCAT_COLOR=always run --separate-stderr "$NVCAT" --paging=never --columns 80 "$SYNTAX"
+  [[ $output == *$'\e['* ]]
+  printf 'color = "always"\n' > "$BATS_TEST_TMPDIR/config.toml"
+  NO_COLOR=1 NVCAT_CONFIG=$BATS_TEST_TMPDIR/config.toml run --separate-stderr "$NVCAT" --paging=never --columns 80 "$SYNTAX"
+  [[ $output == *$'\e['* ]]
+}
+
+@test "--color auto: off when piped, on in fzf previews, in Neovim and on a terminal" {
+  unset FZF_PREVIEW_COLUMNS FZF_PREVIEW_LINES NVIM
+  run --separate-stderr "$NVCAT" --paging=never --color auto --columns 80 "$SYNTAX"
+  [[ $output != *$'\e'* ]]
+  FZF_PREVIEW_COLUMNS=80 FZF_PREVIEW_LINES=20 run --separate-stderr "$NVCAT" --color auto "$SYNTAX"
+  [[ $output == *$'\e['* ]]
+  NVIM=/tmp/socket run --separate-stderr "$NVCAT" --paging=never --color auto --columns 80 "$SYNTAX"
+  [[ $output == *$'\e['* ]]
+  run python3 -c "
+import sys; sys.path.insert(0, '$BATS_TEST_DIRNAME/helpers')
+from common import load_nvcat
+nvcat = load_nvcat()
+nvcat.sys.stdout.isatty = lambda: True
+print(nvcat.use_color('auto'))" 2>&1
+  [ "$output" = True ]
+}
+
+@test "an invalid color setting fails the render and --check" {
+  NVCAT_COLOR=sometimes run --separate-stderr "$NVCAT" --paging=never --columns 80 "$SYNTAX"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"color must be one of auto, always, never, not 'sometimes'"* ]]
+  NVCAT_COLOR=sometimes run "$NVCAT" --check
+  [ "$status" -ne 0 ]
+  [[ $output == *"color: 'sometimes' is not auto, always or never"* ]]
+}
+
+@test "a file's escapes do not pass through bat: not in the fallback, with color or without" {
+  command -v bat >/dev/null || skip "bat not installed"
+  printf 'keep \e]0;PWNED\a \e[31mred\e[0m \xc2\x9d0;C1\xc2\x9c \aBEL \ePdcs\e\\ END\n' > "$BATS_TEST_TMPDIR/evil.md"
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --all --budget 0.000001 "$BATS_TEST_TMPDIR/evil.md"
+  [ "$status" -eq 0 ]
+  [[ $output == *keep* && $output == *END* ]]
+  [[ $output != *$'\a'* && $output != *$'\xc2\x9d'* && $output != *$'\e]'* && $output != *$'\eP'* ]]
+  [[ $output != *$'\e[31m'* ]] || { echo "the file's own SGR passed"; return 1; }
+  [[ $output == *$'\e['* ]]  # bat's own color stays.
+  run --separate-stderr "$NVCAT" --paging=never --color never --columns 80 --all --budget 0.000001 \
+    "$BATS_TEST_TMPDIR/evil.md"
+  [ "$status" -eq 0 ]
+  [[ $output == *keep* && $output == *END* ]]
+  [[ $output != *$'\e'* && $output != *$'\a'* && $output != *$'\xc2\x9d'* ]]
+}
+
+@test "error messages show control characters in names as text" {
+  name=$'nofile\e]0;PWNED\a.md'
+  run --separate-stderr "$NVCAT" --paging=never "$name"
+  [ "$status" -eq 1 ]
+  [[ $stderr != *$'\e'* && $stderr != *$'\a'* ]]
+  [[ $stderr == *'nofile\x1b]0;PWNED\x07.md: no such file'* ]]
+  ln -s $'target\e]0;PWNED\a' "$BATS_TEST_TMPDIR/broken.md"
+  run --separate-stderr "$NVCAT" --paging=never "$BATS_TEST_TMPDIR/broken.md"
+  [ "$status" -eq 1 ]
+  [[ $stderr != *$'\e'* && $stderr != *$'\a'* ]]
+  [[ $stderr == *'target\x1b]0;PWNED\x07'* ]]
+  # Messages keep their line breaks.
+  run --separate-stderr "$NVCAT" --no-such-option
+  [ "$status" -eq 2 ]
+  [[ $stderr == *$'\n'* ]]
 }
 
 @test "--hyperlinks never and NVCAT_HYPERLINKS=never emit no OSC 8" {

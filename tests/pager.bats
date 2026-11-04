@@ -41,6 +41,10 @@ session() {
   session unsafe-links "$doc" --paging=always
 }
 
+@test "with color off the nvim pager gives way to less, whose text has no color" {
+  NO_COLOR=1 session no-color "$DOCUMENT" --paging=always
+}
+
 @test "--syntax regex reaches the pager: raw Markdown with Vim's syntax" {
   session regex "$DOCUMENT" --syntax regex
 }

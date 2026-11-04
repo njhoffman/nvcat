@@ -34,6 +34,11 @@
 # --pager overrides both. Default: nvim.
 # pager = "less"
 
+# Color in the output. always keeps it when piped, as previewers need; never prints the text as laid out; auto is on
+# a terminal, in fzf previews and in Neovim. Unset: NO_COLOR turns it off, otherwise always. NVCAT_COLOR and --color
+# override this; nvcat-dispatch's bat branch reads only those two and NO_COLOR, not this file.
+# color = "auto"
+
 # OSC 8 hyperlinks for Markdown links (clickable in terminals that support them). auto turns them off when
 # a pager command other than less may show the output; NVCAT_HYPERLINKS and --hyperlinks override.
 # Default: auto.

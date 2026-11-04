@@ -164,7 +164,7 @@ print(" ".join(e["filetype"] for e in filetypes.load()))' "$ROOT")
   cp "$FIXTURES/markdown/sample.md" ./--print
   NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat run "$DISPATCH" -- --print
   [ "$status" -eq 0 ]
-  [ "$output" = "bat --color=always --paging=never -- --print" ]
+  [[ $output == "bat --color=always "*"--paging=never -- --print" ]]
   route -- "$FIXTURES/tmux/.tmux.conf"
   [ "$output" = tmux ]
   run "$DISPATCH" --print -- --print
@@ -184,19 +184,19 @@ print(" ".join(e["filetype"] for e in filetypes.load()))' "$ROOT")
 
 @test "other files go to bat" {
   NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat run "$DISPATCH" "$FIXTURES/bat/script.py"
-  [ "$output" = "bat --color=always --paging=never -- $FIXTURES/bat/script.py" ]
+  [[ $output == "bat --color=always "*"--paging=never -- $FIXTURES/bat/script.py" ]]
 }
 
 @test "nvcat failure falls back to bat and hides nvcat stderr" {
   NVCAT=$STUBS/nvcat-fail BAT=$STUBS/bat run --separate-stderr "$DISPATCH" "$FIXTURES/kdl/config.kdl"
   [ "$status" -eq 0 ]
-  [ "${lines[-1]}" = "bat --color=always --paging=never -- $FIXTURES/kdl/config.kdl" ]
+  [[ ${lines[-1]} == "bat --color=always "*"--paging=never -- $FIXTURES/kdl/config.kdl" ]]
   [ -z "$stderr" ]
 }
 
 @test "missing nvcat falls back to bat" {
   NVCAT=$BATS_TEST_TMPDIR/none BAT=$STUBS/bat run "$DISPATCH" "$FIXTURES/kdl/config.kdl"
-  [ "$output" = "bat --color=always --paging=never -- $FIXTURES/kdl/config.kdl" ]
+  [[ $output == "bat --color=always "*"--paging=never -- $FIXTURES/kdl/config.kdl" ]]
 }
 
 @test "usage errors" {
@@ -216,6 +216,39 @@ import sys; sys.path.insert(0, sys.argv[1]); import filetypes
 entry = filetypes.detect(sys.argv[2]); print(entry["filetype"] if entry else "")' "$ROOT" "$file")
     [ "$actual" = "$expected" ] || { echo "$file: python $actual, bash $expected"; return 1; }
   done < <(find "$FIXTURES" -type f | sort)
+}
+
+@test "the bat branch keeps a file's and a name's escapes out of the terminal, and bat's exit status" {
+  command -v bat >/dev/null || skip "bat not installed"
+  evil=$BATS_TEST_TMPDIR/evil.xyzunknown
+  printf 'keep \e]0;PWNED\a \e[31mred\e[0m \xc2\x9d0;C1\xc2\x9c \aBEL \ePdcs\e\\ END\n' > "$evil"
+  for setting in NVCAT_COLOR=always NVCAT_COLOR=never NO_COLOR=1; do
+    run --separate-stderr env "$setting" "$DISPATCH" -- "$evil"
+    [ "$status" -eq 0 ] || { echo "$setting: $stderr"; return 1; }
+    [[ $output == *keep* && $output == *END* ]] || { echo "$setting: $output"; return 1; }
+    [[ $output != *$'\a'* && $output != *$'\xc2\x9d'* && $output != *$'\e]'* && $output != *$'\eP'* &&
+      $output != *$'\e[31m'* ]] || { echo "$setting passes escapes"; return 1; }
+    if [ "$setting" != NVCAT_COLOR=always ]; then
+      [[ $output != *$'\e'* ]] || { echo "$setting has color"; return 1; }
+    fi
+  done
+  run --separate-stderr env -u NO_COLOR "$DISPATCH" -- "$BATS_TEST_TMPDIR/"$'missing\e]0;PWNED\a.xyzunknown'
+  [ "$status" -eq 1 ]
+  [[ $stderr == *missing* && $stderr != *$'\e'* && $stderr != *$'\a'* ]]
+}
+
+@test "the bat branch picks its color from NVCAT_COLOR, then NO_COLOR, then always" {
+  run env -u NO_COLOR -u NVCAT_COLOR NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat "$DISPATCH" -- "$FIXTURES/bat/script.py"
+  [[ $output == "bat --color=always "* ]]
+  run env -u NVCAT_COLOR NO_COLOR=1 NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat "$DISPATCH" -- "$FIXTURES/bat/script.py"
+  [[ $output == "bat --color=never --decorations=always --style=plain "* ]]
+  run env NO_COLOR=1 NVCAT_COLOR=always NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat "$DISPATCH" -- "$FIXTURES/bat/script.py"
+  [[ $output == "bat --color=always "* ]]
+  run env -u NO_COLOR NVCAT_COLOR=auto NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat "$DISPATCH" -- "$FIXTURES/bat/script.py"
+  [[ $output == "bat --color=never "* ]]  # Piped, and outside fzf.
+  run env -u NO_COLOR NVCAT_COLOR=auto FZF_PREVIEW_LINES=9 NVCAT=$STUBS/nvcat-ok BAT=$STUBS/bat "$DISPATCH" -- \
+    "$FIXTURES/bat/script.py"
+  [[ $output == "bat --color=always "* ]]
 }
 
 @test "routing is fast" {

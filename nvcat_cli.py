@@ -280,6 +280,9 @@ UNDERLINES = {"underline": "4", "underdouble": "4:2", "undercurl": "4:3", "under
 # A link's URL comes from the document and goes to the terminal: with a control byte in it (C0, DEL or C1) it could
 # end the OSC 8 sequence and send any other, so such a link is left out.
 CONTROL_BYTES = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+# What bat's output may not carry: controls (bat's --strip-ansi leaves BEL and C1 alone), ESC except in SGR when colored.
+UNSAFE_COLORED = re.compile(rb"\xc2[\x80-\x9f]|[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]|\x1b(?!\[[0-9;:]*m)")
+UNSAFE_PLAIN = re.compile(rb"\xc2[\x80-\x9f]|\x1b\[[0-9;:]*m|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 NOT_URI_BYTES = re.compile(rb"[^\x21-\x7e]")  # OSC 8 allows bytes 32-126; a space is not valid in a URI either.
 
 
@@ -293,11 +296,26 @@ def link_target(url):
   return NOT_URI_BYTES.sub(lambda byte: b"%%%02X" % byte[0][0], url.encode()).decode() or None
 
 
+class SafeStderr:
+  """sys.stderr with control characters shown as \\xNN: messages quote file names, link targets and Neovim's stderr."""
+  UNSAFE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+  def __init__(self, stream):
+    self.stream = stream
+
+  def write(self, text):
+    return self.stream.write(self.UNSAFE.sub(lambda match: f"\\x{ord(match[0]):02x}", text))
+
+  def __getattr__(self, name):
+    return getattr(self.stream, name)
+
+
 class Renderer:
   def __init__(self, executable, paths, temporary, width, height, timeout, timings=None, syntax="auto",
-               hyperlinks=True):
+               hyperlinks=True, color=True):
     self.timings = timings or Timings()
     self.syntax = syntax
+    self.color = color
     self.hyperlinks = hyperlinks  # OSC 8 links for cells whose highlight carries a url (Markdown links)
     self.process = None
     self.errors = []
@@ -501,7 +519,13 @@ class Renderer:
         name = f"frames: neovim {name} (all frames)"
       phases[name] = value
 
+  def plain(self, rows):
+    """The text of the rows, as laid out, without any escape sequence."""
+    return "".join("".join(text for text, _ in row).rstrip(" ") + "\n" for row in self.grid[:rows]).encode("utf-8")
+
   def ansi(self, rows):
+    if not self.color:
+      return self.plain(rows)
     output = []
     sequences = {}
     targets = {}
@@ -628,15 +652,21 @@ def resolve_filetype(name, path):
   return {"filetype": entry["filetype"], "lang": entry.get("lang", entry["filetype"])}
 
 
-def fallback_bat(path, width, filetype, start_line=1, height=None):
-  """bat's rendering of path; with height, only the viewport of that many rows from start_line."""
-  command = ["bat", "--color=always", "--paging=never", "--style=plain", f"--terminal-width={width}"]
+def fallback_bat(path, width, filetype, start_line=1, height=None, color=True):
+  """bat's rendering of path, without the file's own escape sequences; with height, only the viewport of that many
+  rows from start_line."""
+  command = ["bat", f"--color={'always' if color else 'never'}", "--paging=never", "--style=plain",
+             f"--terminal-width={width}"]
+  if filetypes.bat_strips_ansi():
+    # bat copies the file through unfiltered with no color and no decorations; --style=plain still shows none.
+    command += ["--strip-ansi=always", "--decorations=always"]
   if filetype == "markdown":
     command.append("--language=markdown")
   if height:
     command.append(f"--line-range={start_line}:{start_line + height - 1}")
   command += ["--", str(path)]
   output = subprocess.run(command, stdout=subprocess.PIPE, check=True).stdout
+  output = (UNSAFE_COLORED if color else UNSAFE_PLAIN).sub(b"", output)
   return b"".join(output.splitlines(keepends=True)[:height]) if height else output
 
 
@@ -657,6 +687,20 @@ def should_page(mode, complete, output):
 
 
 HYPERLINKS = ["auto", "always", "never"]
+COLORS = ["auto", "always", "never"]
+
+
+def use_color(mode):
+  """Whether to emit color. An explicit setting wins; unset, NO_COLOR turns it off, and otherwise it is on, piped too,
+  because previewers read a pipe. auto: on a terminal, in fzf previews and in Neovim terminal buffers."""
+  if mode is None:
+    return not os.environ.get("NO_COLOR")
+  if mode not in COLORS:
+    raise PreviewError(f"color must be one of {', '.join(COLORS)}, not {mode!r}")
+  if mode != "auto":
+    return mode == "always"
+  return sys.stdout.isatty() or any(os.environ.get(name) for name in
+                                    ["FZF_PREVIEW_COLUMNS", "FZF_PREVIEW_LINES", "NVIM"])
 
 
 def hyperlinks(mode, pager, paging, complete=True):
@@ -865,6 +909,10 @@ def main():
                       "the last line (like less +F). Needs the nvim pager, a terminal and a file")
   parser.add_argument("--pager", help="nvim (built-in Neovim pager), less (less -R), or a pager command line; "
                       "defaults to the configured pager (NVCAT_PAGER), then nvim")
+  parser.add_argument("--color", choices=COLORS,
+                      help="Color and other escape sequences in the output. always: also when piped; never: the text as "
+                      "laid out; auto: on a terminal, in fzf previews and in Neovim. Defaults to the configured color "
+                      "(NVCAT_COLOR), then NO_COLOR, then always")
   parser.add_argument("--hyperlinks", choices=HYPERLINKS,
                       help="OSC 8 hyperlinks for Markdown links. auto (default): on, except when a pager command "
                       "other than less may show the output; defaults to the configured hyperlinks (NVCAT_HYPERLINKS)")
@@ -976,7 +1024,10 @@ def run(args, timings):
     if args.lines is not None or args.start_line != 1:
       raise PreviewError("--paging=always pages the complete document; remove --lines and --start-line")
     all_rows = True
-  links = hyperlinks(args.hyperlinks or settings["hyperlinks"], pager, args.paging, all_rows)
+  args.use_color = use_color(args.color or settings["color"])
+  links = args.use_color and hyperlinks(args.hyperlinks or settings["hyperlinks"], pager, args.paging, all_rows)
+  if pager == "nvim" and not args.use_color and not args.follow:
+    pager = resolve_pager("less")  # Neovim's own screen would be in color.
   paths = find_paths(settings)
   start = timings.since("config", start)
   with run_directory() as temporary:
@@ -1031,7 +1082,7 @@ def run(args, timings):
         renderer = None
         try:
           renderer = Renderer(settings["nvim"], paths, temporary, width, lines, args.timeout, timings, args.syntax,
-                              links)
+                              links, args.use_color)
           output, info = renderer.render(path, width, lines, 1, False, filetype)
         except (TimedOut, Unsupported) as error:
           if renderer:
@@ -1059,7 +1110,7 @@ def run(args, timings):
     fallback = False
     try:
       renderer = Renderer(settings["nvim"], paths, temporary, width, height, args.timeout, timings, args.syntax,
-                          links)
+                          links, args.use_color)
       output, _ = renderer.render(path, width, height, args.start_line, all_rows, filetype, args.budget)
     except TooLarge as error:
       if renderer:
@@ -1083,7 +1134,7 @@ def fall_back(error, args, path, width, filetype, viewport, timings, start_line=
     print(f"nvcat: {error}; showing bat output instead (--fallback=none to fail)", file=sys.stderr)
   with timings.phase("bat fallback"):
     try:
-      output = fallback_bat(path, width, (filetype or {}).get("filetype"), start_line, viewport)
+      output = fallback_bat(path, width, (filetype or {}).get("filetype"), start_line, viewport, args.use_color)
     except subprocess.CalledProcessError as failure:
       raise PreviewError(f"{error}; the bat fallback failed with exit status {failure.returncode}") from None
   timings.facts["engine"] = "bat fallback"
@@ -1112,6 +1163,7 @@ def cancel(*_):
 
 def command():
   """The nvcat command: main() with its signal handling and exit statuses."""
+  sys.stderr = SafeStderr(sys.stderr)
   signal.signal(signal.SIGTERM, cancel)
   signal.signal(signal.SIGHUP, cancel)
   try:

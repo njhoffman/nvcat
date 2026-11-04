@@ -99,7 +99,7 @@ setup_names() {
     run env NVCAT="$stubs/nvcat" BAT="$stubs/bat" bash -c "${preview//\{\}/$quoted}"
     case $name in
       *.md) [ "$output" = "nvcat --all --paging=never --budget=2 --filetype markdown -- $name" ] ;;
-      *) [ "$output" = "bat --color=always --paging=never -- $name" ] ;;
+      *) [[ $output == "bat --color=always "*"--paging=never -- $name" ]] ;;
     esac || { echo "$name: $output"; return 1; }
   done
 }

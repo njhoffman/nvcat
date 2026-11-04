@@ -186,6 +186,24 @@ The pager is chosen by `--pager`, else the `pager` config key (`NVCAT_PAGER`), e
 
 Ctrl-C is left to the pager.
 
+### Color
+
+Output has color by default, also when piped, because previewers such as lf, yazi and `| less -R` read a pipe.
+`--color never`, the `color` config key or `NVCAT_COLOR` turn it off, and with none of them set a non-empty `NO_COLOR`
+does. Without color you get the text as Neovim laid it out, with no escape sequences; icons and table borders are
+text, so they remain. `auto` means on a terminal, in fzf previews
+and in Neovim terminal buffers. With color off the `nvim` pager gives way to `less`, since Neovim's screen would be in
+color, except for `--follow`, which needs it. In `nvcat-dispatch`, the bat branch reads `NVCAT_COLOR` and `NO_COLOR`
+but not the config file.
+
+### Terminal safety
+
+nvcat filters what a previewed file could send to your terminal. Neovim's grid shows control characters as text; output
+that comes through bat has them removed, both in the fallback and in `nvcat-dispatch`, by `--strip-ansi` (bat 0.25.0 or
+later; older versions lose this in the router, and `gen-dispatch` warns) and a filter of nvcat's own, and links with
+control bytes stay plain text. Error messages show control characters in file names as `\xNN`. `--pager` commands get
+what nvcat prints.
+
 ### Underlines and hyperlinks
 
 Besides colors, nvcat keeps bold, italic, reverse, strikethrough, and the underline styles with their color.

@@ -23,6 +23,7 @@ KEYS = {
                                "(optional; render-markdown defaults otherwise)"),
   "pager": ("string", "Pager for complete output: nvim (built in), less (less -R), or a command line"),
   "hyperlinks": ("string", "OSC 8 hyperlinks for Markdown links: auto, always or never"),
+  "color": ("string", "Color in the output: auto, always or never (unset: NO_COLOR, then always)"),
 }
 OPTIONAL = {"icons", "parser_dir", "lua_path", "theme", "colorscheme", "markdown_options"}
 
@@ -124,6 +125,8 @@ def problems(settings):
     errors.append("render-markdown.nvim not found (set render_markdown, or install it under plugin_dirs)")
   if settings["hyperlinks"] not in (None, "auto", "always", "never"):
     errors.append(f"hyperlinks: {settings['hyperlinks']!r} is not auto, always or never")
+  if settings["color"] not in (None, "auto", "always", "never"):
+    errors.append(f"color: {settings['color']!r} is not auto, always or never")
   for key in sorted(OPTIONAL):
     value = settings[key]
     if isinstance(value, Path) and not value.exists():
