@@ -181,8 +181,13 @@ Reviewed: 2026-11-03
   median is far above the recent history, or interleave the samples so a burst spreads across all of them.
   Done in 0.19.0: both. Round-robin rounds, and exit 3 without recording when the load ends above the gate
   or startup is over 1.5x its median of the last five runs (`--record-noisy` overrides).
-- [ ] (p3) [perf] Trial an optional persistent Neovim worker if startup dominates, with cancellation and cleanup tests.
+- [x] (p3) [perf] Trial an optional persistent Neovim worker if startup dominates, with cancellation and cleanup tests.
   `benchmarks/run` then records warm-worker results as their own mode, apart from fresh starts.
+  0.33.0: `NVCAT_WORKER=1`, `tests/worker.bats`, and `benchmarks/worker` for its measurements. Warm-worker results in
+  `benchmarks/run` remain open below.
+- [ ] **`benchmarks/run` has no warm-worker mode.** (p3) [perf] `benchmarks/worker` reports only; record worker latency in the history.
+- [ ] **The worker does not cover `--all` or `nvcat-dispatch`.** (p3) [perf] The router calls `--all --paging=never --budget=2 --filetype`,
+  so previews through it render fresh. Needs complete output in the worker, with its budget and output checked against fresh.
 - [ ] (p3) [perf] Add caching only if measurements justify it; include viewport, file content, theme, configuration, and parser versions.
   `benchmarks/run` then records cache hits as their own mode, apart from renders.
 - [x] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,

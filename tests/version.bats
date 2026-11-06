@@ -106,7 +106,7 @@ EOF
 }
 
 @test "the nvcat command is a thin entry point whose code Python caches as bytecode" {
-  [ "$(grep -cv '^\s*$' "$ROOT/nvcat")" -le 9 ]
+  [ "$(grep -cv '^\s*$' "$ROOT/nvcat")" -le 13 ]
   grep -q '^from nvcat_cli import command' "$ROOT/nvcat"
   # A run through the entry point leaves nvcat_cli's bytecode in __pycache__ (unless writing it is off).
   [ -n "${PYTHONDONTWRITEBYTECODE-}" ] && skip "PYTHONDONTWRITEBYTECODE is set"

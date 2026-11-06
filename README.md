@@ -293,6 +293,25 @@ patches private Neovim internals, checks each one first and stays off when one h
 `highlight_index` in `--timings` shows `on`, `off` or why it is unavailable. `NVCAT_HIGHLIGHT_INDEX=0`
 turns it off.
 
+### Worker for fzf previews
+
+`NVCAT_WORKER=1` keeps one Neovim running for previews, so that moving through a list does not start one per file:
+
+```sh
+NVCAT_WORKER=1 fzf --preview 'nvcat {}'
+```
+
+A repeat preview takes about 100 ms where a fresh one takes about 450 ms on the benchmark samples; the first of a filetype
+saves less, because Neovim still loads its queries. Output is byte-identical. It applies to `nvcat FILE` in an fzf preview,
+not to `--all`, other flags or `nvcat-dispatch`. The first preview starts the worker and renders by itself, and whatever
+the worker cannot serve (a binary or oversized file, an error, a worker busy for 2 s) renders the usual way, so a failure
+costs time and not output.
+
+The worker listens on a socket in `$XDG_RUNTIME_DIR/nvcat`, else `/tmp/nvcat-worker-UID`: a directory only you can enter,
+and it refuses other users' connections. It restarts Neovim when the theme, config, parsers or `NVCAT_*` variables change or
+past 200 MiB, stops a preview whose client has gone, and exits after `NVCAT_WORKER_IDLE` seconds without a request (default
+600). While it runs it holds about 70-85 MiB. `benchmarks/worker` measures all this against a fresh nvcat.
+
 ### Timings
 
 `--timings` prints, after the output, how long each phase took and the peak memory, on stderr; stdout is

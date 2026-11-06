@@ -6,6 +6,17 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-06
+
+### Added
+
+- `NVCAT_WORKER=1` serves fzf previews from a Neovim that stays running: about 100 ms for the Markdown samples, against
+  about 450 ms, and the same bytes. It covers `nvcat FILE` inside an fzf preview, not `--all`, other flags or
+  `nvcat-dispatch`. The first preview starts the worker and renders by itself, and anything the worker cannot serve
+  renders the usual way. It restarts Neovim when the theme, config, parsers or `NVCAT_*` variables change, or past
+  200 MiB, cancels a preview whose client has gone, and exits after `NVCAT_WORKER_IDLE` seconds without a request
+  (default 600).
+
 ## [0.32.0] - 2026-11-06
 
 ### Added

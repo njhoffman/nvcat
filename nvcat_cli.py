@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import re
 import select
-import socket
 import shlex
 import shutil
 import signal
@@ -37,6 +36,7 @@ ROOT = Path(__file__).resolve().parent
 # Neovim clamps 'lines', and so the UI grid, to 1000 rows; a taller nvim_ui_try_resize never produces the
 # requested grid. Renderer.wait_ready() names the row limit if a Neovim with a lower cap times out on it.
 MAX_ROWS = 1000
+DEFAULT_TIMEOUT = 8
 MIN_GRID_ROWS = 2  # Neovim's smallest 'lines': a one-row viewport renders on two and emits one.
 MAX_BYTES = 10 * 1024 * 1024
 BINARY_PROBE = 8192  # Bytes checked for a NUL, as git and grep do, to treat the input as binary.
@@ -322,16 +322,18 @@ class SafeStderr:
     return getattr(self.stream, name)
 
 
-class Cancelled(Exception):
+class ClientGone(Exception):
   """The client of a worker's render has gone."""
 
 
 def client_gone(connection):
   """True once the peer of a Unix socket has closed it. Clients send one line, so nothing else is readable."""
+  import socket  # Only the worker gets here, and a preview's fixed startup is what nvcat tries to keep small.
+
+  if not select.select([connection], [], [], 0)[0]:  # Ahead of recv, which waits out a timeout set on the socket.
+    return False
   try:
     return connection.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) == b""
-  except BlockingIOError:
-    return False
   except OSError:
     return True
 
@@ -409,7 +411,7 @@ class Renderer:
     readable = select.select(readers, [], [], max(remaining, 0))[0]
     if self.watch in readable:
       if client_gone(self.watch):
-        raise Cancelled()
+        raise ClientGone()
       self.watch = None  # Bytes a client should not send: readable for good, so stop looking rather than spin.
       if remaining > 0 and self.process.stdout not in readable:
         return
@@ -982,7 +984,7 @@ def main():
   parser.add_argument("--check", action="store_true",
                       help="Print the resolved configuration and dependency versions, compile the Tree-sitter "
                       "queries of the filetype table's languages (with --all: of every installed parser), then exit")
-  parser.add_argument("--timeout", type=positive, default=8,
+  parser.add_argument("--timeout", type=positive, default=DEFAULT_TIMEOUT,
                       help="Seconds Neovim may take per render step before the fallback (default: 8)")
   parser.add_argument("--syntax", choices=["auto", "regex"], default="auto",
                       help="auto: Tree-sitter when the language has a highlights query, else Vim's regex syntax; "
