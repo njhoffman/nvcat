@@ -895,7 +895,7 @@ def main():
   parser.add_argument("file", type=Path, nargs="?",
                       help="File to render, or - for stdin; without one, stdin when it is not a terminal")
   parser.add_argument("--filetype", help="Neovim filetype; defaults to the filetypes.json match, then Neovim "
-                      "detection, then markdown (stdin: markdown). auto: Neovim detects, and a filetype "
+                      "detection, then markdown (stdin: a modeline, then markdown). auto: Neovim detects, and a filetype "
                       "outside nvcat's tables goes to bat (as for --fallback)")
   parser.add_argument("--columns", type=positive, help="Output width; defaults to fzf or terminal width")
   mode = parser.add_mutually_exclusive_group()
@@ -1091,11 +1091,14 @@ def run(args, timings):
           shutil.copyfileobj(sys.stdin.buffer, handle)
     else:
       path = input_path(args.file)
-    filetype = resolve_filetype(args.filetype, None if str(args.file) == "-" else args.file)
+    stdin = str(args.file) == "-"
+    # stdin has no name to detect from, so only a modeline in what was read can change it from Markdown.
+    filetype = resolve_filetype(args.filetype or (filetypes.modeline_filetype(path) if stdin else None),
+                                None if stdin else args.file)
     auto = filetype is not None and "accept" in filetype
     # A syn=-only modeline naming the filetype shown: Vim's regex syntax, as Vim itself shows that file.
-    if (args.syntax == "auto" and filetype and not auto and str(args.file) != "-"
-        and filetypes.regex_modeline(args.file, filetype["filetype"])):
+    if (args.syntax == "auto" and filetype and not auto
+        and filetypes.regex_modeline(path if stdin else args.file, filetype["filetype"])):
       args.syntax = "regex"
     timings.since("input and filetype", start)
     viewport = None if all_rows else height

@@ -109,7 +109,7 @@ detection is used, then Markdown. Names bat claims ([filetypes.bat.json](filetyp
 filetypes and hands it to bat otherwise, without a notice. Input with a NUL byte in its first 8 KiB is binary and goes to the bat
 fallback. A symbolic link is matched by
 its own name first and by its target's name when its own matches nothing. stdin is Markdown unless
-`--filetype` is given.
+`--filetype` or a modeline in its first or last line says otherwise.
 
 ### Shell completion
 

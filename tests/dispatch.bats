@@ -29,6 +29,46 @@ route() {
   [ "$status" -eq 0 ]
 }
 
+@test "the generated router is clean under shellcheck" {
+  command -v shellcheck >/dev/null || skip "shellcheck not installed"
+  run shellcheck "$DISPATCH"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "gen-dispatch drops globs that another glob of the entry covers" {
+  run python3 - "$ROOT/gen-dispatch" <<'PY'
+import importlib.machinery, importlib.util, os, sys
+sys.path.insert(0, os.path.dirname(sys.argv[1]))
+loader = importlib.machinery.SourceFileLoader("gen", sys.argv[1])
+spec = importlib.util.spec_from_loader("gen", loader)
+m = importlib.util.module_from_spec(spec)
+loader.exec_module(m)
+for globs, expected in [
+    (["*.log", "*_log", "*/*_log"], ["*.log", "*_log"]),
+    (["*/*.x", "*.x"], ["*.x"]),  # Whichever comes first.
+    (["name", "*/name"], ["name", "*/name"]),  # A bare name does not match a path, nor the reverse.
+    (["a*", "a?"], ["a*"]),
+    (["a?", "a*"], ["a*"]),
+    (["a?b", "axb"], ["a?b", "axb"]),  # A ? in the wider glob is not trusted, so this stays as written.
+    (["a?", "a*b"], ["a?", "a*b"]),  # a? has one character after a; a*b has any number.
+    (["*.a+b", "*/x.a+b"], ["*.a+b"]),  # Other characters are literal.
+    (["*.ab", "*.a.b"], ["*.ab", "*.a.b"]),
+]:
+  assert m.reachable(globs) == expected, (globs, m.reachable(globs))
+print("ok")
+PY
+  [ "$output" = ok ] || { echo "$output"; return 1; }
+}
+
+@test "a path matched only by the broader of two globs still routes" {
+  mkdir -p "$BATS_TEST_TMPDIR/udev/rules.d"
+  for item in x_log:log x.sxhkdrc:sxhkdrc udev/1.rules:udevrules udev/rules.d/1.rules:udevrules; do
+    : > "$BATS_TEST_TMPDIR/${item%:*}"
+    route "$BATS_TEST_TMPDIR/${item%:*}"
+    [ "$output" = "${item#*:}" ] || { echo "$item: $output"; return 1; }
+  done
+}
+
 @test "gen-dispatch is reproducible" {
   "$ROOT/gen-dispatch" --output "$BATS_TEST_TMPDIR/a" --claims "$BATS_TEST_TMPDIR/a.json" 2>/dev/null
   "$ROOT/gen-dispatch" --output "$BATS_TEST_TMPDIR/b" --claims "$BATS_TEST_TMPDIR/b.json" 2>/dev/null

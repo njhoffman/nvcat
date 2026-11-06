@@ -123,10 +123,10 @@ Reviewed: 2026-11-03
 - [x] **Sourcing the zsh completion before compinit prints an error.** (p3) [bug] `source <(nvcat completions zsh)` without
   compinit says `command not found: compdef`. The README says to load it after compinit, but the script can check for
   `compdef` and stay quiet, as generated scripts usually do.
-- [ ] **stdin ignores modelines.** (p3) [feature] `printf '# vim: ft=lua\n...' | nvcat -` renders Markdown, because stdin is
+- [x] **stdin ignores modelines.** (p3) [feature] `printf '# vim: ft=lua\n...' | nvcat -` renders Markdown, because stdin is
   always Markdown and only named files read modelines. Read the modeline from the saved stdin too; `--filetype` remains the
   way to override it.
-- [ ] **The generated router has unreachable patterns.** (p3) [chore] `shellcheck` gives 32 warnings on `nvcat-dispatch`,
+- [x] **The generated router has unreachable patterns.** (p3) [chore] `shellcheck` gives 32 warnings on `nvcat-dispatch`,
   among them `*/*_log` after `*_log` (line 66), which can never match. `gen-dispatch` could drop globs a previous pattern
   of the same `case` covers, for a shorter script and a clean lint.
 
@@ -148,6 +148,8 @@ Reviewed: 2026-11-03
   median on the kdl fixture (12 interleaved runs, load 1.5). Removed in 0.10.1.
 - [ ] **grid_scroll copies the whole grid.** (p3) [perf] `Renderer.event` deep-copies every row on each
   `grid_scroll`, O(rows x columns) per scroll; at 1,000 rows this adds up. Copy only the scrolled region.
+  Measured 2026-11-05: no `grid_scroll` events in complete or viewport renders of large.md, SYNTAX.md, or a document that
+  resizes, since the grid is sized before the view moves. Nothing to gain until a render path scrolls; the branch has no test.
 - [x] (p2) [perf] Measure startup, first usable fzf content, total render time, and peak memory on representative documents.
   `benchmarks/run` records an fzf mode, startup and peak RSS of Neovim and Python.
 - [x] (p2) [perf] Profile before optimizing; identify theme loading, parser loading, rendering, and RPC costs separately.

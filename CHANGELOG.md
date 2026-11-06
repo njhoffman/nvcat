@@ -6,6 +6,19 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-05
+
+### Added
+
+- A Vim modeline in stdin's first or last line names its filetype, as it does for a named file: `ft=` renders with
+  Tree-sitter and a `syn=`-only modeline with Vim's regex syntax. `--filetype` overrides it, and without either stdin
+  stays Markdown.
+
+### Changed
+
+- The generated `nvcat-dispatch` drops globs that another glob of the same entry already covers, and is clean under
+  `shellcheck`. Routing is unchanged.
+
 ## [0.26.1] - 2026-11-05
 
 ### Fixed

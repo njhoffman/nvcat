@@ -131,6 +131,16 @@ detected() {
   [[ $output == *Title* ]]
 }
 
+@test "a modeline in stdin names its filetype, and --filetype overrides it" {
+  [ "$(printf -- '-- vim: ft=lua\nlocal x = 1\n' | detected -)" = "lua treesitter" ]
+  [ "$(printf 'local x = 1\n-- vim: ft=lua\n' | detected -)" = "lua treesitter" ]
+  [ "$(printf -- '-- vim: ft=lua\nlocal x = 1\n' | detected --filetype markdown -)" = "markdown render-markdown" ]
+  [ "$(printf '# Heading\n\ntext\n' | detected -)" = "markdown render-markdown" ]
+  # A filetype Neovim cannot highlight is not taken from a modeline, and a syn= modeline means Vim's regex syntax.
+  [ "$(printf '<!-- vim: ft=nosuchfiletype -->\n# Heading\n' | detected -)" = "markdown render-markdown" ]
+  [ "$(printf -- '-- vim: syn=lua\nlocal x = 1\n' | detected -)" = "lua syntax" ]
+}
+
 @test "without a file, piped stdin is rendered as with -" {
   run --separate-stderr bash -c "printf '# Piped heading\n\ntext\n' | '$NVCAT' --paging=never --columns 60"
   [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }

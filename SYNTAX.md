@@ -561,22 +561,22 @@ Other installed parsers are on the runtime path and may also highlight fences, b
 
 <!-- benchmark:start -->
 
-Latest run: 2026-11-06T05:30Z, version 0.26.1 (5118725-dirty), load 4.39, NVIM v0.13.0-dev-1915+gc5641b2bfb. Median of 3 runs after one warm-up, 100 columns; complete output uses `--all --budget 0`, viewport `--lines 40`, fzf sets `FZF_PREVIEW_COLUMNS=100` and `FZF_PREVIEW_LINES=40` (the time to the first usable fzf preview). Startup is the time until Neovim is set up (`--timings`), excluding Python's interpreter start; RSS is the peak of Neovim and of nvcat's Python. Averages compare wall time with all earlier runs in [benchmarks/history.tsv](benchmarks/history.tsv), Recent with the median of the last 5; regenerate with `benchmarks/run`.
+Latest run: 2026-11-06T05:38Z, version 0.27.0 (242d215-dirty), load 0.99, NVIM v0.13.0-dev-1915+gc5641b2bfb. Median of 3 runs after one warm-up, 100 columns; complete output uses `--all --budget 0`, viewport `--lines 40`, fzf sets `FZF_PREVIEW_COLUMNS=100` and `FZF_PREVIEW_LINES=40` (the time to the first usable fzf preview). Startup is the time until Neovim is set up (`--timings`), excluding Python's interpreter start; RSS is the peak of Neovim and of nvcat's Python. Averages compare wall time with all earlier runs in [benchmarks/history.tsv](benchmarks/history.tsv), Recent with the median of the last 5; regenerate with `benchmarks/run`.
 
 | Sample | Lines | Code blocks | Mode | Latest (ms) | Average (ms) | Runs averaged | vs average | Recent (ms) | vs recent | Startup (ms) | Neovim RSS (MiB) | Python RSS (MiB) |
 |---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| [small](benchmarks/small.md) | 51 | 2 | complete | 206 | 377 | 24 | -45% | 302 | -32% | 36 | 24 | 17 |
-| [small](benchmarks/small.md) | 51 | 2 | viewport | 206 | 393 | 24 | -48% | 310 | -34% | 37 | 24 | 17 |
-| [small](benchmarks/small.md) | 51 | 2 | fzf | 210 | 338 | 17 | -38% | 321 | -35% | 35 | 24 | 17 |
-| [medium](benchmarks/medium.md) | 353 | 15 | complete | 443 | 928 | 24 | -52% | 751 | -41% | 40 | 55 | 23 |
-| [medium](benchmarks/medium.md) | 353 | 15 | viewport | 273 | 520 | 24 | -47% | 445 | -39% | 35 | 48 | 17 |
-| [medium](benchmarks/medium.md) | 353 | 15 | fzf | 275 | 445 | 17 | -38% | 401 | -31% | 36 | 45 | 17 |
-| [large](benchmarks/large.md) | 888 | 40 | complete | 564 | 1757 | 24 | -68% | 869 | -35% | 59 | 61 | 32 |
-| [large](benchmarks/large.md) | 888 | 40 | viewport | 283 | 570 | 24 | -50% | 444 | -36% | 39 | 47 | 17 |
-| [large](benchmarks/large.md) | 888 | 40 | fzf | 315 | 498 | 17 | -37% | 431 | -27% | 36 | 43 | 17 |
-| [code](benchmarks/code.md) | 546 | 40 | complete | 457 | 917 | 24 | -50% | 616 | -26% | 55 | 56 | 26 |
-| [code](benchmarks/code.md) | 546 | 40 | viewport | 282 | 529 | 24 | -47% | 398 | -29% | 38 | 46 | 17 |
-| [code](benchmarks/code.md) | 546 | 40 | fzf | 278 | 451 | 17 | -38% | 436 | -36% | 36 | 47 | 17 |
+| [small](benchmarks/small.md) | 51 | 2 | complete | 254 | 370 | 25 | -31% | 251 | +1% | 44 | 24 | 17 |
+| [small](benchmarks/small.md) | 51 | 2 | viewport | 247 | 386 | 25 | -36% | 260 | -5% | 45 | 24 | 17 |
+| [small](benchmarks/small.md) | 51 | 2 | fzf | 258 | 331 | 18 | -22% | 259 | -0% | 45 | 24 | 17 |
+| [medium](benchmarks/medium.md) | 353 | 15 | complete | 549 | 909 | 25 | -40% | 563 | -2% | 53 | 55 | 23 |
+| [medium](benchmarks/medium.md) | 353 | 15 | viewport | 362 | 510 | 25 | -29% | 351 | +3% | 46 | 43 | 17 |
+| [medium](benchmarks/medium.md) | 353 | 15 | fzf | 348 | 436 | 18 | -20% | 370 | -6% | 47 | 43 | 17 |
+| [large](benchmarks/large.md) | 888 | 40 | complete | 690 | 1709 | 25 | -60% | 806 | -14% | 74 | 62 | 31 |
+| [large](benchmarks/large.md) | 888 | 40 | viewport | 459 | 559 | 25 | -18% | 344 | +33% | 62 | 44 | 17 |
+| [large](benchmarks/large.md) | 888 | 40 | fzf | 406 | 488 | 18 | -17% | 359 | +13% | 56 | 47 | 17 |
+| [code](benchmarks/code.md) | 546 | 40 | complete | 563 | 899 | 25 | -37% | 534 | +5% | 66 | 56 | 26 |
+| [code](benchmarks/code.md) | 546 | 40 | viewport | 341 | 519 | 25 | -34% | 330 | +3% | 45 | 46 | 17 |
+| [code](benchmarks/code.md) | 546 | 40 | fzf | 349 | 442 | 18 | -21% | 326 | +7% | 44 | 46 | 17 |
 
 <!-- benchmark:end -->
 
