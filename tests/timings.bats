@@ -40,6 +40,21 @@ field() {
   [ "$(field 'r["total_ms"] >= r["phases"]["startup"] + r["phases"]["open"] + r["phases"]["frames"]')" = True ]
 }
 
+@test "--timings-json attributes loading injected languages to its own phase" {
+  file=$BATS_TEST_TMPDIR/injected.md
+  printf '# Title\n\n```lua\nlocal a = 1\n```\n' >"$file"
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --all --timings-json "$file"
+  [ "$status" -eq 0 ]
+  [ "$(field 'r["phases"].get("frames: neovim injected languages", 0) + r["phases"].get("open: injected languages", 0) > 0')" = True ]
+  # A language with nothing injected loads only itself, which has its own phases.
+  file=$BATS_TEST_TMPDIR/plain.lua
+  printf 'local a = 1\n' >"$file"
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --all --filetype lua --timings-json "$file"
+  [ "$status" -eq 0 ]
+  [ "$(field 'r["engine"]')" = treesitter ]
+  [ "$(field 'r["phases"].get("open: treesitter start", 0) > r["phases"].get("open: injected languages", 0)')" = True ]
+}
+
 @test "--all records resize rounds when the first grid is too short" {
   # Long wrapped lines at 20 columns need more rows than the source line count the grid starts with.
   file=$BATS_TEST_TMPDIR/wrapped.md

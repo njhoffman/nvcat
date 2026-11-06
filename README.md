@@ -299,7 +299,8 @@ turns it off.
 unchanged. `--timings-json` prints the same as one JSON object for scripts. Phases: Python imports, config,
 input, Neovim startup (split into Neovim's own start, the profile, and each setup step: theme, render-markdown,
 icons, query tuning), `open` (edit, filetype, parser load, `vim.treesitter.start`, which compiles the queries,
-and the synchronous parse, or the regex syntax load), frames (the first frame and any resize rounds for
+and the synchronous parse, or the regex syntax load), `injected languages` (the share of parse, and of render or
+redraw under frames, that loads parsers and queries for embedded languages), frames (the first frame and any resize rounds for
 complete output, with render-markdown's render, the wait in Neovim's event queue, and Neovim's redraw summed
 over all ready callbacks; `ready_callbacks` counts those), ANSI encoding,
 close, and output. `rpc handling (python)` is the part of the waits that Python spent decoding redraw events,

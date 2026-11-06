@@ -522,6 +522,31 @@ local function highlight(filetype, lang, syntax)
   end
 end
 
+-- Time the parsers and queries Tree-sitter loads for injected languages, which otherwise count as parsing or redraw.
+-- Neovim's callers look these functions up in their tables on each call. The primary language has its own phases.
+local function attribute_injection_loads(primary)
+  local loading = false
+  local function timed(owner, key)
+    local load = owner[key]
+    owner[key] = function(lang, ...)
+      if loading or lang == primary then
+        return load(lang, ...)
+      end
+      loading = true
+      local start = hrtime()
+      local ok, first, second = pcall(load, lang, ...)
+      loading = false
+      lap(M.open_done and "frames: neovim injected languages" or "open: injected languages", start)
+      if not ok then
+        error(first, 0)
+      end
+      return first, second
+    end
+  end
+  timed(vim.treesitter.language, "add")
+  timed(vim.treesitter.query, "get")
+end
+
 -- Edit path and highlight it. spec: {filetype, lang} from nvcat, or nil to use Neovim's detection with a
 -- Markdown fallback, or {accept} (--filetype auto) to use Neovim's detection only for a filetype in accept.
 -- syntax: "auto" (default) or "regex"; regex Markdown skips render-markdown.
@@ -545,6 +570,7 @@ local function load(path, spec, syntax)
   end
   M.filetype = spec.filetype
   M.lang = spec.lang or spec.filetype
+  attribute_injection_loads(M.lang)
   -- render-markdown needs the Markdown parser; without one that loads, show Vim's markdown syntax instead.
   M.rendered = M.filetype == "markdown" and syntax ~= "regex" and parser_loads("markdown")
   if M.filetype == "markdown" and not M.rendered and syntax ~= "regex" then
@@ -577,6 +603,7 @@ function M.open(path, line, token, spec, syntax)
   -- Not forced: :edit already scheduled render-markdown's forced Initial update, which runs after this returns
   -- and so sees the view set above. A forced update here would run every handler a second time.
   M.update("Preview", false)
+  M.open_done = true
   return vim.api.nvim_get_current_buf()
 end
 

@@ -140,6 +140,8 @@ class Timings:
     lines.append(f"  peak RSS: python {rss['python'] / 1024:.0f} MiB, largest child (nvim or bat) "
                  f"{rss['children'] / 1024:.0f} MiB")
     lines.append(f"  {RPC_PHASE!r} is the Python share of the Neovim waits above, not extra time")
+    if any("injected languages" in name for name in report["phases"]):
+      lines.append("  'injected languages' is the share of parse and render or redraw that loads parsers and queries")
     return "\n".join(lines) + "\n"
 
 

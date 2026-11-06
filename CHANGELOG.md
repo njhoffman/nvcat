@@ -6,6 +6,13 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-06
+
+### Added
+
+- `--timings` and `--timings-json` report the time spent loading parsers and queries for injected languages as
+  `injected languages`, under both open and frames.
+
 ## [0.31.1] - 2026-11-06
 
 ### Fixed

@@ -161,8 +161,10 @@ Reviewed: 2026-11-03
   and viewport tests green.
   Done differently (0.26.0): the trace showed the later redraws take 0.1 ms; the waste was a forced update running
   every handler twice, so that update is no longer forced (`render_passes` 1). See docs/PERFORMANCE.md.
-- [ ] **Injected-language loading is unattributed.** (p3) [perf] astro spends ~140 ms in `parse` loading the
+- [x] **Injected-language loading is unattributed.** (p3) [perf] astro spends ~140 ms in `parse` loading the
   TypeScript and CSS parsers and queries; time `language.add`/query loads for injections as their own phase.
+  Done in 0.32.0: `injected languages` under open and frames. page.astro: 135 of 136 ms of parse and 120 of 123 ms of
+  redraw, about 255 ms of its ~430 ms in Neovim. README.md: 204 ms. Loading, mostly queries, is the cost to attack here.
 - [ ] **cuda query compilation.** (p3) [perf] `vim.treesitter.start` takes ~245 ms of cuda's ~300 ms (inherited
   cpp/c queries; 2026-11-03, was ~390 ms) against ~130 ms total with `--syntax regex`. Consider a per-filetype `syntax` key in filetypes.json, or
   a trimmed query.
