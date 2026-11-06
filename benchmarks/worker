@@ -1,0 +1,247 @@
+#!/usr/bin/python3
+"""Trial: what would a persistent Neovim worker save on fzf previews, and does it print the same bytes?
+
+A worker process holds one embedded Neovim and serves previews over a Unix socket to a thin client; the times are
+wall clock for the client process, against a fresh nvcat, in alternating pairs. Records nothing. Parts:
+output (worker bytes against fresh nvcat, every sample and fixture, shuffled, two passes, two sizes), latency,
+cancel (a request abandoned just before another), memory (Neovim's RSS over many previews).
+"""
+
+import argparse
+import contextlib
+import json
+import os
+from pathlib import Path
+import random
+import signal
+import socket
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+
+from common import HERE, ROOT, SAMPLES
+
+sys.path.insert(0, str(ROOT))
+import config  # noqa: E402
+import filetypes  # noqa: E402
+import nvcat_cli as nvcat  # noqa: E402
+
+CLIENT = HERE / "worker_client.py"
+COLUMNS, LINES = 100, 40
+LATENCY_EXTRA = ["tests/fixtures/astro/page.astro", "tests/fixtures/cuda/kernel.cu", "README.md"]
+
+
+def fresh_command(path, width, height):
+  environment = {k: v for k, v in os.environ.items() if k not in ("NVIM",)}
+  environment.update(FZF_PREVIEW_COLUMNS=str(width), FZF_PREVIEW_LINES=str(height))
+  return [str(ROOT / "nvcat"), "--paging=never", "--timeout", "20", str(path)], environment
+
+
+def serve(socket_path):
+  settings = config.load()[0]
+  pager = nvcat.resolve_pager(settings["pager"])
+  color = nvcat.use_color(settings["color"])
+  links = color and nvcat.hyperlinks(settings["hyperlinks"], pager, "never", False)
+  if links:
+    links = settings["link_schemes"] or config.DEFAULT_LINK_SCHEMES
+  paths = nvcat.find_paths(settings)
+  listener = socket.socket(socket.AF_UNIX)
+  listener.bind(socket_path)
+  listener.listen(16)
+  with nvcat.run_directory() as temporary:
+    nvcat.restrict_writes(temporary)
+    renderer = nvcat.Renderer(settings["nvim"], paths, temporary, COLUMNS, LINES, 20, nvcat.Timings(), "auto", links, color)
+    width, height = COLUMNS, LINES
+    print(f"ready {renderer.process.pid}", flush=True)
+    while True:
+      connection, _ = listener.accept()
+      with connection:
+        request = json.loads(connection.makefile().readline())
+        if request.get("quit"):
+          break
+        try:
+          path = nvcat.input_path(Path(request["path"]))
+          filetype = nvcat.resolve_filetype(None, Path(request["path"]))
+          auto = filetype is not None and "accept" in filetype
+          renderer.syntax = ("regex" if filetype and not auto and filetypes.regex_modeline(Path(request["path"]), filetype["filetype"])
+                             else "auto")
+          renderer.timings = nvcat.Timings()
+          renderer.ready.clear()
+          renderer.errors.clear()
+          renderer.request("nvim_exec_lua", "nvcat.reset()", [])
+          if (request["width"], request["height"]) != (width, height):
+            width, height = request["width"], request["height"]
+            renderer.request("nvim_ui_try_resize", width, max(height, nvcat.MIN_GRID_ROWS))
+          output, _ = renderer.render(path, width, height, 1, False, filetype)
+          connection.sendall(b"O" + output)
+        except BrokenPipeError:
+          pass
+        except Exception as error:  # noqa: BLE001 - a trial reports every failure to its client.
+          with contextlib.suppress(OSError):
+            connection.sendall(b"E" + f"{type(error).__name__}: {error}\n".encode())
+    renderer.close()
+
+
+class Worker:
+  def __enter__(self):
+    self.directory = tempfile.TemporaryDirectory(prefix="nvcat-worker-")
+    self.socket = str(Path(self.directory.name) / "socket")
+    self.process = subprocess.Popen([sys.executable, __file__, "--serve", self.socket], stdout=subprocess.PIPE, text=True)
+    word, pid = self.process.stdout.readline().split()
+    assert word == "ready", word
+    self.nvim = int(pid)
+    return self
+
+  def __exit__(self, *_):
+    with contextlib.suppress(OSError):
+      with socket.socket(socket.AF_UNIX) as connection:
+        connection.connect(self.socket)
+        connection.sendall(b'{"quit": true}\n')
+    try:
+      self.process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+      self.process.kill()
+    self.directory.cleanup()
+
+  def preview(self, path, width=COLUMNS, height=LINES):
+    return subprocess.run([sys.executable, "-I", "-S", str(CLIENT), self.socket, str(path), str(width), str(height)],
+                          capture_output=True, check=False)
+
+  def rss_mib(self):
+    for line in Path(f"/proc/{self.nvim}/status").read_text().splitlines():
+      if line.startswith("VmRSS:"):
+        return int(line.split()[1]) / 1024
+    return 0.0
+
+
+def timed(function):
+  start = time.perf_counter()
+  result = function()
+  return (time.perf_counter() - start) * 1000, result
+
+
+def documents():
+  files = [HERE / f"{sample}.md" for sample in SAMPLES]
+  for file in sorted((ROOT / "tests/fixtures").rglob("*")):
+    if not file.is_file():
+      continue
+    with open(file, "rb") as handle:
+      if b"\0" in handle.read(8192):
+        continue
+    files.append(file)
+  return files
+
+
+def output_part(seed, verbose):
+  sizes = [(COLUMNS, LINES), (80, 24)]
+  files = documents()
+  expected = {}
+  for file in files:
+    for width, height in sizes:
+      command, environment = fresh_command(file, width, height)
+      result = subprocess.run(command, env=environment, capture_output=True, check=False)
+      expected[file, width, height] = (result.returncode, result.stdout, result.stderr)
+  fell_back = {key for key, value in expected.items() if value[0] != 0 or b"showing bat" in value[2]}
+  jobs = [(file, *size) for file in files for size in sizes if (file, *size) not in fell_back] * 2
+  random.Random(seed).shuffle(jobs)
+  different = {}
+  failed = {}
+  with Worker() as worker:
+    for file, width, height in jobs:
+      result = worker.preview(file, width, height)
+      if result.returncode:
+        failed[file, width, height] = result.stderr.decode(errors="replace").strip()
+      elif result.stdout != expected[file, width, height][1]:
+        different[file, width, height] = different.get((file, width, height), 0) + 1
+  print(f"output: {len(jobs)} previews of {len(files)} files, seed {seed}; {len(fell_back)} size/file pairs left out (fresh nvcat "
+        f"fell back or failed); different {len(different)} pairs, failed {len(failed)} pairs")
+  if verbose:
+    for key, count in sorted(different.items(), key=str):
+      print(f"  different {count}x: {key[0].relative_to(ROOT)} {key[1]}x{key[2]}")
+    for key, message in sorted(failed.items(), key=str):
+      print(f"  failed: {key[0].relative_to(ROOT)} {key[1]}x{key[2]}: {message[:150]}")
+  return not different and not failed
+
+
+def latency_part(rounds):
+  files = [HERE / f"{sample}.md" for sample in SAMPLES] + [ROOT / name for name in LATENCY_EXTRA]
+  print("| Document | Fresh nvcat (ms) | Worker, first of this filetype (ms) | Worker, repeat (ms) | Worker, change of document (ms) | Saved, repeat |")
+  print("|---|---:|---:|---:|---:|---:|")
+  for file in files:
+    command, environment = fresh_command(file, COLUMNS, LINES)
+    fresh, repeat, switch, first = [], [], [], []
+    other = HERE / "small.md" if file.name != "small.md" else HERE / "medium.md"
+    for _ in range(3):
+      with Worker() as worker:
+        first.append(timed(lambda worker=worker: worker.preview(file))[0])
+    with Worker() as worker:
+      worker.preview(file)
+      worker.preview(other)
+      for number in range(rounds):
+        order = [0, 1] if number % 2 else [1, 0]
+        for which in order:
+          if which:
+            fresh.append(timed(lambda: subprocess.run(command, env=environment, capture_output=True, check=True))[0])
+          else:
+            repeat.append(timed(lambda: worker.preview(file))[0])
+        worker.preview(other)
+        switch.append(timed(lambda: worker.preview(file))[0])
+    a, b = statistics.median(fresh), statistics.median(repeat)
+    print(f"| {file.name} | {a:.0f} | {statistics.median(first):.0f} | {b:.0f} | {statistics.median(switch):.0f} | {100 * (a - b) / a:.0f}% |", flush=True)
+
+
+def cancel_part(rounds):
+  small = HERE / "small.md"
+  big = HERE / "large.md"
+  normal, cancelled = [], []
+  with Worker() as worker:
+    worker.preview(big)
+    worker.preview(small)
+    for _ in range(rounds):
+      normal.append(timed(lambda: worker.preview(small))[0])
+      for _ in range(3):  # A user moving through a list: each request abandoned at once.
+        with socket.socket(socket.AF_UNIX) as connection:
+          connection.connect(worker.socket)
+          connection.sendall(json.dumps({"path": str(big), "width": COLUMNS, "height": LINES}).encode() + b"\n")
+      cancelled.append(timed(lambda: worker.preview(small))[0])
+  print(f"cancel: small.md {statistics.median(normal):.0f} ms; after 3 abandoned previews of large.md, "
+        f"with no cancellation in this worker, {statistics.median(cancelled):.0f} ms")
+
+
+def memory_part(count):
+  files = documents()
+  with Worker() as worker:
+    start = worker.rss_mib()
+    marks = []
+    for number in range(count):
+      worker.preview(files[number % len(files)])
+      if (number + 1) % (count // 4) == 0:
+        marks.append(f"{number + 1}: {worker.rss_mib():.0f}")
+    print(f"memory: Neovim RSS {start:.0f} MiB at start; after previews " + ", ".join(marks) + " MiB")
+
+
+if __name__ == "__main__":
+  parser = argparse.ArgumentParser(description=__doc__)
+  parser.add_argument("--serve")
+  parser.add_argument("--part", choices=["output", "latency", "cancel", "memory"], action="append")
+  parser.add_argument("--rounds", type=int, default=9)
+  parser.add_argument("--seed", type=int, default=1)
+  parser.add_argument("--verbose", action="store_true")
+  args = parser.parse_args()
+  if args.serve:
+    signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+    serve(args.serve)
+    sys.exit(0)
+  parts = args.part or ["output", "latency", "cancel", "memory"]
+  ok = True
+  if "output" in parts:
+    ok = output_part(args.seed, args.verbose)
+  if "latency" in parts:
+    latency_part(args.rounds)
+  if "cancel" in parts:
+    cancel_part(args.rounds)
+  if "memory" in parts:
+    memory_part(300)
+  sys.exit(0 if ok else 1)

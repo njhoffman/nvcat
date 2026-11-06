@@ -525,11 +525,16 @@ end
 -- Time the parsers and queries Tree-sitter loads for injected languages, which otherwise count as parsing or redraw.
 -- Neovim's callers look these functions up in their tables on each call. The primary language has its own phases.
 local function attribute_injection_loads(primary)
+  M.primary_lang = primary
+  if M.attributing then -- A worker opens many documents in one Neovim.
+    return
+  end
+  M.attributing = true
   local loading = false
   local function timed(owner, key)
     local load = owner[key]
     owner[key] = function(lang, ...)
-      if loading or lang == primary then
+      if loading or lang == M.primary_lang then
         return load(lang, ...)
       end
       loading = true
@@ -587,6 +592,13 @@ local function load(path, spec, syntax)
   else
     highlight(M.filetype, M.lang, syntax)
   end
+end
+
+-- A worker's clean slate between documents: nothing of the last one stays.
+function M.reset()
+  M.open_done = false
+  M.timings = {}
+  vim.cmd("silent! %bwipeout!")
 end
 
 function M.open(path, line, token, spec, syntax)
