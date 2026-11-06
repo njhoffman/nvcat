@@ -6,8 +6,6 @@ local groups = {
   "Conditional", "Repeat", "Label", "Operator", "Keyword", "Exception", "PreProc", "Include", "Define", "Macro",
   "PreCondit", "Type", "StorageClass", "Structure", "Typedef", "Special", "SpecialChar", "Tag", "Delimiter",
   "SpecialComment", "Debug", "Underlined", "Error", "Todo", "Title", "Directory",
-  -- A log grammar with its own captures: Neovim links them to nothing, so a theme has to set them (see TODO.md).
-  "@log.date", "@log.time", "@log.number", "@log.string", "@log.operator", "@log.bracket", "@log.level.error",
 }
 
 return {

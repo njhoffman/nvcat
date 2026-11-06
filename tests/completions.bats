@@ -105,6 +105,32 @@ bash_complete() {
   [ -z "$stderr" ]
 }
 
+@test "just completions writes a current script where each shell looks, and can run again" {
+  command -v just >/dev/null || skip "just is not installed"
+  home=$BATS_TEST_TMPDIR/home
+  mkdir -p "$home"
+  for _ in 1 2; do
+    run env -u XDG_DATA_HOME -u XDG_CONFIG_HOME HOME="$home" just --justfile "$ROOT/justfile" completions
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  done
+  "$NVCAT" completions bash | diff - "$home/.local/share/bash-completion/completions/nvcat"
+  if command -v zsh >/dev/null; then
+    # A home with no zshrc has nothing of its own on fpath, so it is told what to add.
+    "$NVCAT" completions zsh | diff - "$home/.local/share/zsh/site-functions/_nvcat"
+    [[ $output == *"fpath=($home/.local/share/zsh/site-functions"* ]]
+    # A zshrc that adds a directory of the user's gets the script there, with nothing to add.
+    mkdir -p "$home/zfunc"
+    printf 'fpath=(%s $fpath)\n' "$home/zfunc" > "$home/.zshrc"
+    run env -u XDG_DATA_HOME -u XDG_CONFIG_HOME -u ZDOTDIR HOME="$home" just --justfile "$ROOT/justfile" completions
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    "$NVCAT" completions zsh | diff - "$home/zfunc/_nvcat"
+    [[ $output != *'add to ~/.zshrc'* ]]
+  fi
+  if command -v fish >/dev/null; then
+    "$NVCAT" completions fish | diff - "$home/.config/fish/completions/nvcat.fish"
+  fi
+}
+
 @test "completions fish: complete -C offers options, values, shells and filetypes" {
   command -v fish >/dev/null || skip "fish not installed"
   "$NVCAT" completions fish > "$SCRIPT"

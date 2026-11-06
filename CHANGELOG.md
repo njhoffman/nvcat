@@ -6,6 +6,35 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-06
+
+### Added
+
+- CI: `.github/workflows/ci.yml` runs the suite on a clean Ubuntu 24.04 against Neovim 0.11.7 and 0.12.6, with pinned
+  tools and plugins from `tests/ci-setup`.
+
+### Changed
+
+- Only `http`, `https` and `mailto` links become hyperlinks, because rendering hides the target behind the text: links
+  such as `file:///etc/passwd`, `javascript:` and `ssh://`, and links with no scheme, stay plain text. The `link_schemes`
+  config key and `NVCAT_LINK_SCHEMES` set the list, and `all` allows any.
+
+### Fixed
+
+- A symbolic link loop gives the same error on every Python, where before 3.13 it read differently.
+- Tests that need a Tree-sitter parser skip without it, and the suite runs where `TERM` is not set.
+
+## [0.30.0] - 2026-11-06
+
+### Added
+
+- `just completions` installs the completion scripts for the shells on this machine.
+
+### Fixed
+
+- The test that `filetypes.regex.json` and `SYNTAX.md` are current skips, and says how to regenerate them, on a machine
+  whose Neovim, bat or parsers differ from those they were generated with, instead of failing.
+
 ## [0.29.0] - 2026-11-06
 
 ### Added

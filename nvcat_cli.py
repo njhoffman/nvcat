@@ -288,13 +288,20 @@ UNSAFE_PLAIN = re.compile(rb"\xc2[\x80-\x9f]|\x1b\[[0-9;:]*m|[\x00-\x08\x0b\x0c\
 NOT_URI_BYTES = re.compile(rb"[^\x21-\x7e]")  # OSC 8 allows bytes 32-126; a space is not valid in a URI either.
 
 
-def link_target(url):
+URL_SCHEME = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*):")
+
+
+def link_target(url, schemes=None):
   """The URI to write in an OSC 8 hyperlink for a link's url, or None to leave the link out: without its
-  Markdown <angle brackets>, the rest percent-encoded."""
+  Markdown <angle brackets>, the rest percent-encoded. schemes: the URL schemes allowed, None or "all" for any."""
   if not url or CONTROL_BYTES.search(url):
     return None
   if url.startswith("<") and url.endswith(">"):
     url = url[1:-1]
+  if schemes is not None and "all" not in schemes:
+    scheme = URL_SCHEME.match(url)
+    if not scheme or scheme[1].lower() not in schemes:
+      return None
   return NOT_URI_BYTES.sub(lambda byte: b"%%%02X" % byte[0][0], url.encode()).decode() or None
 
 
@@ -318,7 +325,8 @@ class Renderer:
     self.timings = timings or Timings()
     self.syntax = syntax
     self.color = color
-    self.hyperlinks = hyperlinks  # OSC 8 links for cells whose highlight carries a url (Markdown links)
+    # OSC 8 links for cells whose highlight carries a url (Markdown links): false, or the schemes allowed.
+    self.hyperlinks = hyperlinks
     self.process = None
     self.errors = []
     self.stderr = tempfile.TemporaryFile(dir=temporary)
@@ -551,7 +559,8 @@ class Renderer:
           if highlight not in sequences:
             attrs = self.highlights.get(highlight, {})
             sequences[highlight] = self.sgr(attrs)
-            targets[highlight] = link_target(attrs.get("url")) if self.hyperlinks else None
+            schemes = self.hyperlinks if isinstance(self.hyperlinks, list) else None
+            targets[highlight] = link_target(attrs.get("url"), schemes) if self.hyperlinks else None
           url = targets[highlight]
           if url != link:
             output.append(f"\x1b]8;id={ids.setdefault(url, len(ids) + 1)};{url}\x1b\\" if url else "\x1b]8;;\x1b\\")
@@ -628,8 +637,8 @@ def input_path(argument):
     if path.is_symlink():
       raise PreviewError(f"{argument}: broken symbolic link to {os.readlink(path)}") from None
     raise PreviewError(f"{argument}: no such file") from None
-  except RuntimeError:  # Symbolic link loops before Python 3.13, which raises OSError (ELOOP) instead.
-    raise PreviewError(f"{argument}: symbolic link loop") from None
+  except RuntimeError:  # Symbolic link loops before Python 3.13, which raises OSError (ELOOP) with this text instead.
+    raise PreviewError(f"{argument}: too many levels of symbolic links") from None
   except OSError as error:
     raise PreviewError(f"{argument}: {(error.strerror or str(error)).lower()}") from None
   return resolved
@@ -1101,6 +1110,8 @@ def run(args, timings):
     all_rows = True
   args.use_color = use_color(args.color or settings["color"])
   links = args.use_color and hyperlinks(args.hyperlinks or settings["hyperlinks"], pager, args.paging, all_rows)
+  if links:
+    links = settings["link_schemes"] or config.DEFAULT_LINK_SCHEMES
   if pager == "nvim" and not args.use_color and not args.follow:
     pager = resolve_pager("less")  # Neovim's own screen would be in color.
   paths = find_paths(settings)

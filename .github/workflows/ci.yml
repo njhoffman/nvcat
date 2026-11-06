@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The versions tests/nvim-versions pins, which README.md lists as tested.
+        nvim: [v0.11.7, v0.12.6]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tests/version.bats compares VERSION with the tags.
+      - run: tests/ci-setup ${{ matrix.nvim }}
+      - run: bats tests/

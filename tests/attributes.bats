@@ -162,6 +162,46 @@ print(nvcat.use_color('auto'))" 2>&1
   [[ $stderr == *$'\n'* ]]
 }
 
+# The OSC 8 targets in $1, one per line, sorted.
+link_targets() {
+  grep -ao $'\e]8;id=[0-9]*;[^\e]*' <<<"$1" | sed 's/^.*;//' | LC_ALL=C sort -u
+}
+
+@test "only allowed URL schemes become hyperlinks, whatever their case, and link text always shows" {
+  doc=$BATS_TEST_TMPDIR/schemes.md
+  printf '%s\n\n' '[plain](http://a.example/)' '[secure](HTTPS://b.example/)' '[mail](mailto:c@example.com)' \
+    '[hidden file](file:///etc/passwd)' '[script](javascript:alert)' '[remote](ssh://d.example/)' \
+    '[relative](./other.md)' '[anchor](#section)' '[angle](<http://e.example/f>)' > "$doc"
+  run --separate-stderr "$NVCAT" --paging=never --hyperlinks always --columns 80 --all "$doc"
+  [ "$status" -eq 0 ]
+  [ "$(link_targets "$output")" = "$(printf '%s\n' 'HTTPS://b.example/' 'http://a.example/' 'http://e.example/f' 'mailto:c@example.com' | LC_ALL=C sort)" ] ||
+    { link_targets "$output"; return 1; }
+  for text in plain secure mail 'hidden file' script remote relative anchor angle; do
+    [[ $output == *"$text"* ]] || { echo "lost: $text"; return 1; }
+  done
+  # A key that names others replaces the list, in any spelling; "all" allows any scheme, but still needs one to be a URI.
+  NVCAT_LINK_SCHEMES='SSH, file' run --separate-stderr "$NVCAT" --paging=never --hyperlinks always --columns 80 --all "$doc"
+  [ "$status" -eq 0 ]
+  [ "$(link_targets "$output")" = "$(printf '%s\n' 'file:///etc/passwd' 'ssh://d.example/' | LC_ALL=C sort)" ]
+  NVCAT_LINK_SCHEMES=all run --separate-stderr "$NVCAT" --paging=never --hyperlinks always --columns 80 --all "$doc"
+  [ "$status" -eq 0 ]
+  [[ $(link_targets "$output") == *'javascript:alert'* ]]
+  [[ $(link_targets "$output") == *'./other.md'* ]]
+}
+
+@test "link_schemes reads as a TOML list too, and a bad scheme is reported" {
+  doc=$BATS_TEST_TMPDIR/schemes.md
+  printf '[remote](ssh://d.example/)\n\n[plain](http://a.example/)\n' > "$doc"
+  config=$BATS_TEST_TMPDIR/config.toml
+  printf 'link_schemes = ["ssh"]\n' > "$config"
+  NVCAT_CONFIG=$config run --separate-stderr "$NVCAT" --paging=never --hyperlinks always --columns 80 --all "$doc"
+  [ "$status" -eq 0 ]
+  [ "$(link_targets "$output")" = 'ssh://d.example/' ]
+  NVCAT_LINK_SCHEMES='http bad!scheme' run --separate-stderr "$NVCAT" --paging=never --columns 80 --all "$doc"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"link_schemes: 'bad!scheme' is not a URL scheme"* ]]
+}
+
 @test "--hyperlinks never and NVCAT_HYPERLINKS=never emit no OSC 8" {
   run --separate-stderr "$NVCAT" --paging=never --hyperlinks never --columns 80 --all "$SYNTAX"
   [ "$status" -eq 0 ]

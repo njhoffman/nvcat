@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 from common import load_nvcat
+from has_parser import available
 
 SNIPPETS = {
   "c": 'const char *message = "hello"; // comment',
@@ -25,7 +26,13 @@ SNIPPETS = {
 }
 ALIASES = {"c++": "cpp", "cxx": "cpp", "cc": "cpp", "sh": "bash", "shell": "bash", "js": "javascript",
            "py": "python"}
+# A language with no parser here has plain code fences, which is correct on such a machine.
+INSTALLED = available(SNIPPETS)
 CASES = {**SNIPPETS, **{alias: SNIPPETS[target] for alias, target in ALIASES.items()}}
+for name in list(CASES):
+  if ALIASES.get(name, name) not in INSTALLED:
+    print(f"skip {name} no parser")
+    del CASES[name]
 
 module = load_nvcat()
 width = int(sys.argv[1])

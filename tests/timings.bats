@@ -70,6 +70,7 @@ field() {
 }
 
 @test "--syntax regex uses Vim's syntax files for a Tree-sitter filetype" {
+  python3 "$BATS_TEST_DIRNAME/helpers/has_parser.py" kdl || skip "needs a kdl parser"
   run --separate-stderr "$NVCAT" --paging=never --columns 80 --all --timings-json -- "$FIXTURES/kdl/config.kdl"
   [ "$(field 'r["engine"], r["ready_callbacks"]')" = "('treesitter', 1)" ]
   treesitter=$output

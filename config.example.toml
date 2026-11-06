@@ -44,6 +44,11 @@
 # Default: auto.
 # hyperlinks = "never"
 
+# URL schemes that become hyperlinks, since rendering hides a link's target behind its text: a list, or a string
+# separated by spaces or commas, or "all". Any other link stays plain text, as does one with no scheme. NVCAT_LINK_SCHEMES
+# overrides. Default: http, https and mailto.
+# link_schemes = ["http", "https", "mailto", "ssh"]
+
 # A Lua file returning a table with apply(), run in the nvim pager (not less) after it sets its keys, so its mappings
 # win. For smooth scrolling and your own keys; modules come from lua_path. If it fails the pager still opens, with a
 # warning. See examples/pager-init.lua.

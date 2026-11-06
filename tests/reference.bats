@@ -37,14 +37,19 @@ lacks() { [[ $text != *"$1"* ]] || { echo "$name at $width: shows '$1'"; return 
 
 @test "extended syntax at 40, 80 and 120 columns: footnotes, wiki links, comments, callouts, code labels" {
   name=extended
+  # render-markdown hides HTML comments through the html parser; without one they are ordinary text.
+  html=1
+  python3 "$BATS_TEST_DIRNAME/helpers/has_parser.py" html || html=
   for width in 40 80 120; do
     render_at extended "$width"
     [ "$(grep -o '¹' <<<"$text" | wc -l)" -ge 2 ] || { echo "$width: footnote reference or definition missing"; return 1; }
     lacks '[^1]'
     has 'Some Page'
     lacks '[['
-    lacks REFERENCE_HIDDEN_COMMENT
-    lacks '<!--'
+    if [ -n "$html" ]; then
+      lacks REFERENCE_HIDDEN_COMMENT
+      lacks '<!--'
+    fi
     has Note
     has Warning
     lacks '[!NOTE]'

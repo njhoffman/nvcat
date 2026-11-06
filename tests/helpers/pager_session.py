@@ -149,6 +149,8 @@ if scenario == "unsafe-links":
       fail(f"no OSC 8 sequence for {uri.decode()}")
   if b"<http://sp" in captured:
     fail("a URL kept its angle brackets")
+  if b"javascript:" in captured:
+    fail("a link with a scheme outside link_schemes became a hyperlink")
   if b"PWNED" in captured or b"\x1b]0;" in captured:
     fail("a URL's control bytes reached the terminal")
   press("q")

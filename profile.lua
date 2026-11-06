@@ -211,7 +211,11 @@ end
 -- The highlighter's link url comes from the document, and one with a control byte (or invalid UTF-8) is not safe to
 -- send to a terminal. Printed output filters them in nvcat_cli.py; for the pager, which Neovim draws, drop them where
 -- the highlighter hands them over.
-function M.filter_link_urls()
+function M.filter_link_urls(schemes)
+  local allowed = {}
+  for _, scheme in ipairs(schemes or {}) do
+    allowed[scheme] = true
+  end
   local set_extmark = vim.api.nvim_buf_set_extmark
   vim.api.nvim_buf_set_extmark = function(buf, ns, row, col, opts)
     local url = opts.url
@@ -223,7 +227,9 @@ function M.filter_link_urls()
         url = (url:match("^<(.*)>$") or url):gsub("[^\33-\126]", function(byte)
           return ("%%%02X"):format(byte:byte())
         end)
-        opts.url = url ~= "" and url or nil
+        local scheme = url:match("^(%a[%w+.-]*):")
+        local permitted = allowed.all or (scheme and allowed[scheme:lower()])
+        opts.url = permitted and url ~= "" and url or nil
       end
     end
     return set_extmark(buf, ns, row, col, opts)
@@ -382,7 +388,7 @@ function M.setup(channel, paths)
   end
   start = lap("setup: runtimepath", start)
   if not channel then
-    M.filter_link_urls()
+    M.filter_link_urls(paths.link_schemes)
   end
   M.highlight_index = M.index_highlighter()
   start = lap("setup: highlighter index", start)

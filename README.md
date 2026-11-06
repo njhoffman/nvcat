@@ -117,6 +117,9 @@ its own name first and by its target's name when its own matches nothing. stdin 
 this machine's tables (asked for when you press Tab). A lone `nvcat completions` opens a file of that name if there
 is one.
 
+`just completions` installs them for the shells on this machine (run it again after updating nvcat), or wire them up by
+hand:
+
 ```sh
 source <(nvcat completions bash)                                    # in ~/.bashrc
 source <(nvcat completions zsh)                                     # in ~/.zshrc, after compinit (before it, nothing is registered); or save as _nvcat on $fpath
@@ -233,7 +236,9 @@ Markdown inline links and autolinks become OSC 8 hyperlinks, clickable in termin
 `id` per URI so that a link wrapped over rows stays one link. `less -R` (tested with 668) and fzf previews (since
 0.55 by fzf's changelog, tested with 0.74) pass them on. Reference links stay plain text: Neovim's highlights query attaches no URL to
 them. So does a link whose URL has a control byte, which could otherwise send escape sequences to the terminal
-(in the `nvim` pager too).
+(in the `nvim` pager too). Only `http`, `https` and `mailto` links become hyperlinks, because rendering hides the target
+behind the text: `[release notes](file:///etc/passwd)` stays plain text, as does a link with no scheme, which a terminal
+could not open. The `link_schemes` config key (`NVCAT_LINK_SCHEMES`) sets the list, or `all` allows any.
 `--hyperlinks` (or the `hyperlinks` config key, `NVCAT_HYPERLINKS`) chooses: `auto` (the default) emits
 them unless a pager command other than less may show the output (a terminal, a complete document, outside fzf and
 Neovim), which might print them as text; `always` and `never` do what they say. In the `nvim` pager, Neovim emits the links itself.
@@ -391,6 +396,9 @@ render time and the time in Neovim's highlighter callbacks; it fails when the tw
 after a Neovim upgrade. `just bench-highlighter` runs it.
 
 ## Tests
+
+CI runs the suite on a clean Ubuntu 24.04 against Neovim 0.11.7 and 0.12.6 (`tests/ci-setup` pins the tools and plugins),
+with only the parsers Neovim bundles.
 
 ```sh
 bats tests/

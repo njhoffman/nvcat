@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Install what the test suite needs on a clean Ubuntu 24.04, for CI: tests/ci-setup [NEOVIM_VERSION].
+#
+# The versions are pinned so that a failure comes from the change under test, not from a new release. Neovim is pinned
+# with a digest in tests/nvim-versions, and the plugins by commit below. Parsers are the ones Neovim bundles, so filetypes
+# that need others use regex syntax here, which is what a user with no parsers gets.
+
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+VERSION=${1:-v0.12.6}
+# name, URL, SHA-256 of the release archive (x86-64). The apt versions are too old: bat before 0.25 has no --strip-ansi,
+# and the justfile and the fzf bindings need newer just and fzf.
+TOOLS=(
+  "bat https://github.com/sharkdp/bat/releases/download/v0.26.1/bat-v0.26.1-x86_64-unknown-linux-musl.tar.gz 0dcd8ac79732c0d5b136f11f4ee00e581440e16a44eab5b3105b611bbf2cf191"
+  "fzf https://github.com/junegunn/fzf/releases/download/v0.74.5/fzf-0.74.5-linux_amd64.tar.gz d47d7f882972c7d674dbbba998ffa4116e68379616ffac7695d0671e9a722c5f"
+  "just https://github.com/casey/just/releases/download/1.59.0/just-1.59.0-x86_64-unknown-linux-musl.tar.gz 409044617b6f06517c1035e55ca38c8c856ff8b650e41bc2aa1ef82d5903a23e"
+  "hyperfine https://github.com/sharkdp/hyperfine/releases/download/v2.0.0/hyperfine-v2.0.0-x86_64-unknown-linux-musl.tar.gz 38e59087bd65520930a13cf513d8a493b7043741e8ad62349a8a9929eb61bc5c"
+)
+PLUGINS=(
+  "https://github.com/MeanderingProgrammer/render-markdown.nvim 8e8795368391036643b622875a6da6a51bcd33f4"
+  "https://github.com/nvim-mini/mini.icons eab3e692d796d78ea6ffc978d8a380ff26fcf4e3"
+)
+
+sudo=
+[ "$(id -u)" -eq 0 ] || sudo=sudo
+$sudo apt-get update -qq
+$sudo apt-get install -y -qq --no-install-recommends bats bsdutils ca-certificates curl fish git less python3 \
+  python3-msgpack ripgrep shellcheck zsh >/dev/null
+
+bin=$HOME/.local/bin
+mkdir -p "$bin"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+for tool in "${TOOLS[@]}"; do
+  read -r name url digest <<<"$tool"
+  curl -fsSL --retry 2 -o "$work/$name.tar.gz" "$url"
+  echo "$digest  $work/$name.tar.gz" | sha256sum --check --quiet
+  mkdir "$work/$name"
+  tar -xzf "$work/$name.tar.gz" -C "$work/$name"
+  find "$work/$name" -type f -name "$name" -exec install -m 755 {} "$bin/$name" \;
+done
+
+nvim=$("$ROOT/tests/nvim-versions" --install "$VERSION")
+ln -sfn "$nvim" "$bin/nvim"
+
+plugins=$HOME/.local/share/nvim/lazy
+mkdir -p "$plugins"
+for plugin in "${PLUGINS[@]}"; do
+  read -r url commit <<<"$plugin"
+  directory=$plugins/$(basename "$url")
+  rm -rf "$directory"
+  git init -q "$directory"
+  git -C "$directory" fetch -q --depth 1 "$url" "$commit"
+  git -C "$directory" checkout -q FETCH_HEAD
+done
+
+# For later steps of a GitHub Actions job.
+if [ -n "${GITHUB_PATH:-}" ]; then
+  echo "$bin" >> "$GITHUB_PATH"
+fi
+PATH=$bin:$PATH "$ROOT/nvcat" --check

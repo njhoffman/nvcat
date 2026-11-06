@@ -5,6 +5,7 @@
 #   tests/nvim-versions v0.11.7              # one version
 #   tests/nvim-versions -- tests/render.bats # other bats arguments
 #   tests/nvim-versions --list               # the default versions
+#   tests/nvim-versions --install v0.12.6    # download one, print its nvim; runs no tests
 #
 # Each version runs with its nvim first on PATH and as NVCAT_NVIM. Your parsers, queries, theme and
 # render-markdown are used as configured, so a failure can come from them as well as from Neovim: parsers
@@ -36,9 +37,11 @@ die() { echo "nvim-versions: $*" >&2; exit 2; }
 
 versions=()
 bats_args=()
+install_only=
 while (($#)); do
   case $1 in
     --list) printf '%s\n' "${DEFAULT_VERSIONS[@]}"; exit 0 ;;
+    --install) install_only=1 ;;
     -h|--help) sed -n '2,/^$/s/^# \{0,1\}//p' "$0"; exit 0 ;;
     --) shift; bats_args=("$@"); break ;;
     v[0-9]*) versions+=("$1") ;;
@@ -58,7 +61,7 @@ case $(uname -m) in
 esac
 [ "$(uname -s)" = Linux ] || die "Linux only (nvcat needs Landlock)"
 command -v curl >/dev/null || die "curl is required"
-command -v bats >/dev/null || die "bats is required"
+[ -n "$install_only" ] || command -v bats >/dev/null || die "bats is required"
 
 # Print the nvim executable of version, downloading and unpacking it on first use.
 install() {
@@ -84,6 +87,12 @@ install() {
   mv "$directory.partial" "$directory"
   echo "$directory/bin/nvim"
 }
+
+if [ -n "$install_only" ]; then
+  ((${#versions[@]} == 1)) || die "--install takes one version"
+  install "${versions[0]}"
+  exit 0
+fi
 
 status=0
 summary=()

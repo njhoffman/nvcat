@@ -103,7 +103,7 @@ for e in filetypes.load(): print(e["filetype"], e.get("lang", e["filetype"]))' "
 }
 
 @test "dispatch renders through the real nvcat" {
-  NVCAT=$ROOT/nvcat run "$ROOT/nvcat-dispatch" "$FIXTURES/gleam/app.gleam"
+  NVCAT=$ROOT/nvcat run "$ROOT/nvcat-dispatch" "$FIXTURES/tmux/.tmux.conf"
   [ "$status" -eq 0 ]
   [ "$(colors "$output")" -ge 3 ]
 }

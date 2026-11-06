@@ -70,6 +70,7 @@ print('ok')"
 
 @test "a quick check of one filetype measures every variant and records nothing" {
   command -v hyperfine >/dev/null || skip "needs hyperfine"
+  python3 "$ROOT/tests/helpers/has_parser.py" kdl || skip "needs a kdl parser"
   recorded() { cat "$ROOT/benchmarks/filetypes.tsv" "$ROOT/docs/PERFORMANCE.md" 2>/dev/null || true; }
   before=$(recorded)
   run --separate-stderr "$ROOT/benchmarks/filetypes" --only kdl --quick --check --max-load 1000
@@ -90,6 +91,9 @@ print('ok')"
 }
 
 @test "the highlighter benchmark compares one document in both modes and records nothing" {
+  "$ROOT/nvcat" --paging=never --columns 80 --lines 1 --timings-json "$ROOT/benchmarks/small.md" 2>&1 >/dev/null |
+    python3 -c 'import json, sys; sys.exit(json.load(sys.stdin)["highlight_index"] != "on")' ||
+    skip "this Neovim has no highlighter index to compare"
   before=$(sha1sum <"$ROOT/docs/PERFORMANCE.md")
   run --separate-stderr "$ROOT/benchmarks/highlighter" --runs 1 --max-load 1000 "$ROOT/tests/fixtures/markdown/sample.md"
   [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }

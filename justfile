@@ -27,6 +27,26 @@ install: dispatch check
       ln -sfn "{{ justfile_directory() }}/$command" "$target" && echo "linked $target -> {{ justfile_directory() }}/$command"
     done
 
+# Install shell completions for the shells on this machine; run again after updating nvcat
+completions:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nvcat="{{ justfile_directory() }}/nvcat"
+    data=${XDG_DATA_HOME:-$HOME/.local/share}
+    write() { mkdir -p "$(dirname "$2")" && "$nvcat" completions "$1" > "$2" && echo "wrote $2"; }
+    if command -v bash >/dev/null; then write bash "$data/bash-completion/completions/nvcat"; fi
+    if command -v fish >/dev/null; then write fish "${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/nvcat.fish"; fi
+    if command -v zsh >/dev/null; then
+      # The first directory of the user's own on zsh's fpath, which needs their zshrc; else one to add to it.
+      directory=$(zsh -ic 'print -rl -- $fpath' 2>/dev/null </dev/null | grep -m1 "^$HOME/" || true)
+      if [[ -n $directory ]]; then
+        write zsh "$directory/_nvcat"
+      else
+        write zsh "$data/zsh/site-functions/_nvcat"
+        echo "add to ~/.zshrc, before compinit: fpath=($data/zsh/site-functions \$fpath)"
+      fi
+    fi
+
 # Remove the links install made, if they point into this checkout
 uninstall:
     #!/usr/bin/env bash

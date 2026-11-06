@@ -7,6 +7,7 @@ Neovim with render-markdown.nvim installed through lazy.nvim works without a fil
 import glob
 import os
 from pathlib import Path
+import re
 import shutil
 
 # key: (kind, description). Kinds: path, paths (list), string.
@@ -25,6 +26,7 @@ KEYS = {
   "pager_init": ("path", "Lua file returning a table with apply(), run in the nvim pager after it sets its keys "
                          "(optional; for smooth scrolling and your own keys)"),
   "hyperlinks": ("string", "OSC 8 hyperlinks for Markdown links: auto, always or never"),
+  "link_schemes": ("words", "URL schemes that become hyperlinks, a list or separated by spaces or commas, or all"),
   "color": ("string", "Color in the output: auto, always or never (unset: NO_COLOR, then always)"),
   "pace": ("string", "Print to a terminal at a readable pace: on, off, or visible characters per second"),
 }
@@ -63,9 +65,11 @@ def defaults():
     "parser_dir": data / "nvim/site",
     "pager": "nvim",
     "hyperlinks": "auto",
+    "link_schemes": DEFAULT_LINK_SCHEMES,
   }
 
 
+DEFAULT_LINK_SCHEMES = ["http", "https", "mailto"]
 DEFAULT_PACE = 800.0  # Visible characters per second: about ten full lines of 80 columns.
 
 
@@ -123,6 +127,9 @@ def load(path=None):
       settings[key] = [Path(match) for item in value for match in sorted(glob.glob(str(expand(item))))]
     elif kind == "path":
       settings[key] = expand(value)
+    elif kind == "words":
+      words = value if isinstance(value, list) else str(value).replace(",", " ").split()
+      settings[key] = [str(word).lower() for word in words]
     else:
       settings[key] = str(value)
   if settings["render_markdown"] is None:
@@ -148,6 +155,9 @@ def problems(settings):
     errors.append(f"hyperlinks: {settings['hyperlinks']!r} is not auto, always or never")
   if settings["color"] not in (None, "auto", "always", "never"):
     errors.append(f"color: {settings['color']!r} is not auto, always or never")
+  for scheme in settings["link_schemes"] or []:
+    if not re.fullmatch(r"[a-z][a-z0-9+.-]*", scheme):
+      errors.append(f"link_schemes: {scheme!r} is not a URL scheme")
   try:
     pace_rate(settings["pace"])
   except ValueError as error:
@@ -173,6 +183,7 @@ def runtime_paths(settings):
     "lua_path": existing("lua_path"),
     "theme": existing("theme"),
     "pager_init": existing("pager_init"),
+    "link_schemes": settings["link_schemes"] or DEFAULT_LINK_SCHEMES,
     "colorscheme": settings["colorscheme"],
     "markdown_options": existing("markdown_options"),
   }

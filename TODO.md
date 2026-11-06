@@ -96,9 +96,9 @@ Reviewed: 2026-11-03
   reword.
   Done in 0.23.0: fzf's changelog says 0.55, not 0.54; `tests/fzf.bats` checks OSC 8 with an id through fzf 0.74. The README no
   longer names terminals, since none was tested, and gives less 668 as tested instead of "566 and later".
-- [ ] **Run the fish completion test.** (p3) [test] `nvcat completions fish` (0.23.0) has never been loaded in fish: it
+- [x] **Run the fish completion test.** (p3) [test] `nvcat completions fish` (0.23.0) has never been loaded in fish: it
   was not installed where it was written, so `tests/completions.bats` skips it. Run that test where fish is installed.
-- [ ] **Install completions with `just install`.** (p3) [feature] `nvcat completions SHELL` only prints a script; each
+- [x] **Install completions with `just install`.** (p3) [feature] `nvcat completions SHELL` only prints a script; each
   user wires it up by hand. Consider a `just completions` that writes it to the shell's standard directory.
 - [x] **requirements.txt still says `make deps`.** (p3) [docs] It is `just deps` since 0.13.0.
 - [x] **Output shown through bat can carry a file's terminal escapes.** (p2) [bug] Neovim's grid makes them harmless, but
@@ -117,7 +117,7 @@ Reviewed: 2026-11-03
   `NO_COLOR` is ignored, unlike bat and most cat-like tools. Add `--color auto|always|never` and honor `NO_COLOR`. `auto`
   has to keep color in fzf previews, whose stdout is a pipe, and `nvcat-dispatch` has to keep working.
   Done in 0.24.0: default stays always, by decision, so previewers that read a pipe keep working; `auto` is opt-in.
-- [ ] **Decide which link schemes are clickable.** (p3) [feature] `[text](file:///etc/passwd)`, `javascript:` and `ssh://`
+- [x] **Decide which link schemes are clickable.** (p3) [feature] `[text](file:///etc/passwd)`, `javascript:` and `ssh://`
   all become hyperlinks, and rendering hides the target behind the text. Consider allowing only http, https and mailto by
   default, with a setting for more. A trade-off, not a clear bug: terminals differ in what they open and whether they ask.
 - [x] **Sourcing the zsh completion before compinit prints an error.** (p3) [bug] `source <(nvcat completions zsh)` without
@@ -238,10 +238,10 @@ Reviewed: 2026-11-03
 - [x] **Run `tests/nvim-versions` for 0.19.0-0.21.x.** (p2) [test] `docs/RELEASING.md` requires it for each release;
   it did not run for these, and its `DEFAULT_TESTS` lacked `attributes` and `reference`.
   Done in 0.21.2: both added; v0.11.7 190 of 190 and v0.12.6 191 of 191 ok, 1 skipped each.
-- [ ] **The suite runs only on a configured machine.** (p3) [test] There is no CI, and most test files use the
+- [x] **The suite runs only on a configured machine.** (p3) [test] There is no CI, and most test files use the
   developer's `config.toml`, theme and render-markdown options; a default-options bug hid behind that until
-  0.21.0. `just test-defaults` (0.27.1) now runs the suite with no config file. Left: a CI job with pinned Neovim and
-  plugins, which needs choosing the versions and how to install parsers.
+  0.21.0. `just test-defaults` (0.27.1) runs the suite with no config file, and `.github/workflows/ci.yml` (0.31.0) on a
+  clean Ubuntu with pinned tools. Only the parsers Neovim bundles are installed, so tests that need others skip there.
 
 ## Filetype support
 
@@ -281,7 +281,7 @@ Reviewed: 2026-11-03
   `--map-syntax`/home-directory globs from this machine's bat config; another machine must run
   `./gen-dispatch`, and `tests/dispatch.bats` fails until it does. Done in 0.16.0: neither file is tracked,
   `just install` generates them, the suite generates its own, and `nvcat --check` warns when stale.
-- [ ] **filetypes.regex.json and SYNTAX.md are generated from this machine.** (p3) [chore] `./gen-filetypes`
+- [x] **filetypes.regex.json and SYNTAX.md are generated from this machine.** (p3) [chore] `./gen-filetypes`
   derives them from the local Neovim, its syntax files and parsers, and bat, and `tests/dispatch.bats` checks
   they are current, so another machine fails that test. Unlike the router they are worth committing (they are
   the documented coverage); consider skipping the check unless Neovim and bat match the versions recorded in
