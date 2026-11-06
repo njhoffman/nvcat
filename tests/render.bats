@@ -11,6 +11,8 @@ setup_file() {
   # Languages --check shows with regex syntax (no parser or highlights query on this machine).
   REGEX_LANGS=" $(sed -n 's/^  regex syntax *\([^(]*\).*/\1/p' <<<"$report" | tr -d ',') "
   export REGEX_LANGS
+  # These tests count colors, so they use a theme that has them whatever this machine's config is.
+  export NVCAT_THEME=$BATS_TEST_DIRNAME/helpers/theme.lua
 }
 
 setup() {
@@ -55,11 +57,10 @@ for e in filetypes.load(): print(e["filetype"], e.get("lang", e["filetype"]))' "
 }
 
 @test "regex-syntax filetypes highlight comments" {
-  "$NVCAT" --check | grep -q '^  theme  *[^ -]' || skip "needs a configured theme with italic comments"
   run "$NVCAT" --columns 80 --all --filetype tmux -- "$FIXTURES/tmux/.tmux.conf"
   [ "$status" -eq 0 ]
   first=$(head -1 <<<"$output")
-  [[ $first == *$'\e[0;3;'* ]]  # Comment is italic in the theme
+  [[ $first == *$'\e[0;3;'* ]]  # Comment is italic in helpers/theme.lua
   [[ $first == *'# prefix'* ]]
 }
 

@@ -198,6 +198,12 @@ Reviewed: 2026-11-03
 
 ## Rendering fidelity and larger documents
 
+- [ ] **Logs are monochrome under a theme without `@log.*` groups.** (p3) [bug] The `log` parser's query uses its own captures
+  (`@log.number`, `@log.level.error`), which Neovim links to nothing. The editor links them in
+  `~/.config/nvim/after/ftplugin/log.lua`, which nvcat does not load, so only a theme that sets them (`nord-nick`) gets
+  color: `tests/fixtures/log/app.log` has 1 color with no config, and `tests/helpers/theme.lua` has to set them too. Only
+  a machine with this hand-built parser is affected; without it `syntax/log.vim` links to standard groups. Fix: the
+  same links with `default = true` after the theme in `profile.lua`, or standard captures in the grammar's query.
 - [x] (p3) [test] Compare all reference features at multiple widths, including footnotes, wiki links, HTML comments, and code labels.
   Done in 0.21.0: `tests/reference.bats` at 40, 80 and 120 columns with render-markdown's defaults, plus
   no line wider than the output. It found the cursor row shown as raw Markdown under render-markdown's
@@ -234,8 +240,8 @@ Reviewed: 2026-11-03
   Done in 0.21.2: both added; v0.11.7 190 of 190 and v0.12.6 191 of 191 ok, 1 skipped each.
 - [ ] **The suite runs only on a configured machine.** (p3) [test] There is no CI, and most test files use the
   developer's `config.toml`, theme and render-markdown options; a default-options bug hid behind that until
-  0.21.0. Run the suite with an empty config (as `reference.bats` does for options), then add a CI job with
-  pinned Neovim and plugins.
+  0.21.0. `just test-defaults` (0.27.1) now runs the suite with no config file. Left: a CI job with pinned Neovim and
+  plugins, which needs choosing the versions and how to install parsers.
 
 ## Filetype support
 

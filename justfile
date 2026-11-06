@@ -65,6 +65,10 @@ deps:
 test *args="tests/":
     bats {{ args }}
 
+# Run the bats suite as on a machine with no config file, with nvcat's default options
+test-defaults *args="tests/":
+    NVCAT_CONFIG=/nonexistent/nvcat/config.toml bats {{ args }}
+
 # Run benchmarks/run (records history, updates SYNTAX.md)
 bench:
     benchmarks/run

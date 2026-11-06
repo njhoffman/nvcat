@@ -6,6 +6,16 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-05
+
+### Added
+
+- `just test-defaults` runs the test suite with no config file, as on a fresh machine.
+
+### Fixed
+
+- The rendering tests pass with any theme: they use their own instead of whichever this machine has configured.
+
 ## [0.27.0] - 2026-11-05
 
 ### Added
