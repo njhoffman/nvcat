@@ -1,6 +1,7 @@
-"""Helpers shared by the benchmark scripts: the load gate, run metadata, and git."""
+"""Helpers shared by the benchmark scripts: the samples and modes, the load gate, run metadata, and git."""
 
 import datetime
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -8,6 +9,26 @@ import time
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+SAMPLES = ["small", "medium", "large", "code"]
+COLUMNS, LINES = 100, 40
+# fzf: no size flags; nvcat takes the size from fzf's variables and emits one viewport, as in a preview.
+MODES = {
+  "complete": (["--all", "--budget", "0"], {}),
+  "viewport": (["--lines", str(LINES)], {}),
+  "fzf": ([], {"FZF_PREVIEW_COLUMNS": str(COLUMNS), "FZF_PREVIEW_LINES": str(LINES)}),
+}
+
+
+def render_command(root, sample, mode, timeout, extra=()):
+  """The command line and environment rendering a sample in a mode with the nvcat in root."""
+  flags, variables = MODES[mode]
+  size = [] if variables else ["--columns", str(COLUMNS)]
+  command = [str(Path(root) / "nvcat"), "--paging=never", *size, "--timeout", str(timeout), *extra,
+             *flags, str(HERE / f"{sample}.md")]
+  environment = {name: value for name, value in os.environ.items()
+                 if name not in ("FZF_PREVIEW_COLUMNS", "FZF_PREVIEW_LINES", "NVIM")}
+  environment.update(variables)
+  return command, environment
 
 
 def load1():

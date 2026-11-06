@@ -186,7 +186,7 @@ Reviewed: 2026-11-03
 - [x] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
   like a failed render, while `benchmarks/highlighter` exits 2 for the same case. Exit 2 here too. On
   2026-11-03 other processes held the load at 8-23 for the whole 15 minutes.
-- [ ] **Add a `benchmarks/compare REF` for busy machines.** (p3) [perf] `benchmarks/run` refused three runs in a row on
+- [x] **Add a `benchmarks/compare REF` for busy machines.** (p3) [perf] `benchmarks/run` refused three runs in a row on
   2026-11-03, and 0.22.0 and 0.23.0 have no history rows. Twice the check became a hand-written script timing two trees in
   alternation, which load affects equally. Make that a tool: a ref against the working tree, per sample and mode, with
   enough rounds to tell noise from change (9 rounds showed +14% on a row that 24 showed as -7%). It reports only, and does

@@ -23,17 +23,9 @@ import subprocess
 import sys
 import time
 
-from common import HERE, ROOT, load1, metadata, wait_for_load
+from common import COLUMNS, HERE, LINES, MODES, ROOT, SAMPLES, load1, metadata, render_command, wait_for_load
 HISTORY = HERE / "history.tsv"
 SYNTAX = ROOT / "SYNTAX.md"
-SAMPLES = ["small", "medium", "large", "code"]
-COLUMNS, LINES = 100, 40
-# fzf: no size flags; nvcat takes the size from fzf's variables and emits one viewport, as in a preview.
-MODES = {
-  "complete": (["--all", "--budget", "0"], {}),
-  "viewport": (["--lines", str(LINES)], {}),
-  "fzf": ([], {"FZF_PREVIEW_COLUMNS": str(COLUMNS), "FZF_PREVIEW_LINES": str(LINES)}),
-}
 # Phases up to a ready Neovim (nvcat --timings-json). Python's own interpreter start precedes them.
 STARTUP_PHASES = ["python imports", "config", "input and filetype", "startup"]
 FIELDS = ["date", "version", "commit", "sample", "mode", "median_ms", "min_ms", "runs", "load1", "nvim",
@@ -47,13 +39,7 @@ RECENT_RUNS = 5  # Recorded runs per sample and mode that form that median and t
 
 def render(sample, mode, timeout):
   """One render: (wall ms, startup ms, Neovim peak RSS MiB, nvcat peak RSS MiB)."""
-  flags, variables = MODES[mode]
-  size = [] if variables else ["--columns", str(COLUMNS)]
-  command = [str(ROOT / "nvcat"), "--paging=never", *size, "--timeout", str(timeout), "--timings-json",
-             *flags, str(HERE / f"{sample}.md")]
-  environment = {name: value for name, value in os.environ.items()
-                 if name not in ("FZF_PREVIEW_COLUMNS", "FZF_PREVIEW_LINES", "NVIM")}
-  environment.update(variables)
+  command, environment = render_command(ROOT, sample, mode, timeout, ["--timings-json"])
   start = time.perf_counter()
   result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
   elapsed = (time.perf_counter() - start) * 1000

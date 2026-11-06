@@ -73,6 +73,10 @@ test-defaults *args="tests/":
 bench:
     benchmarks/run
 
+# Run benchmarks/compare (a Git ref against the working tree, also on a busy machine; records nothing)
+bench-compare ref *args:
+    benchmarks/compare {{ ref }} {{ args }}
+
 # Run benchmarks/filetypes (records the baseline, updates docs/PERFORMANCE.md)
 bench-filetypes *args: dispatch
     benchmarks/filetypes {{ args }}

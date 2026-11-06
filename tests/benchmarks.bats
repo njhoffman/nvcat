@@ -161,3 +161,50 @@ assert 'nothing recorded' in errors.getvalue(), errors.getvalue()
 print('ok')"
   [ "$output" = ok ]
 }
+
+@test "benchmarks/compare calls a change only when the middle of the differences is on one side of zero" {
+  run with_script compare "
+slower = m.summarize([(100, 120), (100, 118), (100, 122), (100, 119)])
+assert slower['verdict'] == 'slower' and round(slower['change']) == 20, slower
+faster = m.summarize([(120, 100), (118, 100), (122, 100), (119, 100)])
+assert faster['verdict'] == 'faster', faster
+# The median says +5%, as a burst on one side can, but the differences straddle zero.
+noise = m.summarize([(100, 90), (100, 105), (100, 105), (100, 130), (100, 80)])
+assert noise['verdict'] == 'noise' and noise['change'] == 5, noise
+one = m.summarize([(100, 110)])
+assert one['verdict'] == 'slower' and one['low'] == one['high'] == 10, one
+print('ok')"
+  [ "$output" = ok ]
+}
+
+@test "benchmarks/compare warms up, swaps which side goes first, and notices different output" {
+  run with_script compare "
+calls = []
+def fake(side, sample, mode):
+  calls.append((side, sample))
+  return (1.0 if side == 'ref' else 2.0, b'same' if sample == 'a' else side.encode())
+import contextlib, io
+with contextlib.redirect_stderr(io.StringIO()):
+  times, same = m.measure([('a', 'x'), ('b', 'x')], 2, fake)
+warmup = [('ref', 'a'), ('tree', 'a'), ('ref', 'b'), ('tree', 'b')]
+first = [('ref', 'a'), ('tree', 'a'), ('ref', 'b'), ('tree', 'b')]
+second = [('tree', 'a'), ('ref', 'a'), ('tree', 'b'), ('ref', 'b')]
+assert calls == warmup + first + second, calls
+assert times[('a', 'x')] == [(1.0, 2.0), (1.0, 2.0)], times  # Paired by side, whichever ran first.
+assert same == {('a', 'x'): True, ('b', 'x'): False}, same
+print('ok')"
+  [ "$output" = ok ]
+}
+
+@test "benchmarks/compare reports a ref against the working tree and records nothing" {
+  before=$(cksum "$ROOT/benchmarks/history.tsv" "$ROOT/SYNTAX.md")
+  run --separate-stderr "$ROOT/benchmarks/compare" HEAD --rounds 1 --sample small --mode viewport
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [[ ${lines[0]} == '| Sample | Mode | HEAD (ms) | Tree (ms) |'* ]]
+  [[ ${lines[2]} == '| small | viewport | '* ]]
+  [ "$(cksum "$ROOT/benchmarks/history.tsv" "$ROOT/SYNTAX.md")" = "$before" ]
+  run "$ROOT/benchmarks/compare" no-such-ref-here
+  [ "$status" -eq 2 ]
+  [[ $output == *'no such ref: no-such-ref-here'* ]]
+}
+

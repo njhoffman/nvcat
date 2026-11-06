@@ -6,6 +6,14 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-06
+
+### Added
+
+- `benchmarks/compare REF` compares a Git ref with the working tree on the benchmark samples, also on a machine in use.
+  The two trees take turns, a row counts as slower or faster only when the middle 50% of the differences is on one side
+  of zero, and it says whether the output changed. It records nothing.
+
 ## [0.27.1] - 2026-11-05
 
 ### Added

@@ -1,0 +1,102 @@
+#!/usr/bin/python3
+"""Compare a Git ref with the working tree on the benchmark samples; reports only, and records nothing.
+
+benchmarks/run needs a quiet machine and compares with earlier runs, so load can pass for a change. Here the two
+trees take turns, swapping which goes first each round, so load from other processes falls on both, and every
+round gives one paired difference. A row counts as faster or slower only when the middle 50% of its differences
+is entirely on one side of zero; a median alone can be several percent off on a machine in use.
+
+The samples are the working tree's, for both sides. Exit 1 when a render fails, 2 when REF does not exist.
+"""
+
+import argparse
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+
+from common import MODES, ROOT, SAMPLES, render_command
+
+
+def summarize(rounds):
+  """Medians and verdict for [(ref ms, tree ms), ...]."""
+  differences = [tree - ref for ref, tree in rounds]
+  low, high = statistics.quantiles(differences, n=4, method="inclusive")[::2] if len(rounds) > 1 else differences * 2
+  ref = statistics.median(ref for ref, _ in rounds)
+  tree = statistics.median(tree for _, tree in rounds)
+  median = statistics.median(differences)
+  verdict = "slower" if low > 0 else "faster" if high < 0 else "noise"
+  return {"ref_ms": ref, "tree_ms": tree, "change": median / ref * 100, "low": low, "high": high, "verdict": verdict}
+
+
+def measure(pairs, rounds, render):
+  """{pair: [(ref ms, tree ms), ...]} and {pair: whether the outputs matched}. One discarded warm-up render per pair
+  and side; then rounds that render every pair on both sides, the side going first swapping each round."""
+  times, same = {pair: [] for pair in pairs}, {pair: True for pair in pairs}
+  for pair in pairs:
+    for side in ("ref", "tree"):
+      render(side, *pair)
+  for number in range(rounds):
+    for pair in pairs:
+      results = {}
+      for side in ("ref", "tree") if number % 2 == 0 else ("tree", "ref"):
+        results[side] = render(side, *pair)
+      times[pair].append((results["ref"][0], results["tree"][0]))
+      same[pair] = same[pair] and results["ref"][1] == results["tree"][1]
+    print(f"round {number + 1}/{rounds}", file=sys.stderr, flush=True)
+  return times, same
+
+
+def table(ref, times, same):
+  out = [f"| Sample | Mode | {ref} (ms) | Tree (ms) | Change | Middle 50% of differences (ms) | Verdict | Output |",
+         "|---|---|---:|---:|---:|---:|---|---|"]
+  for (sample, mode), rounds in times.items():
+    row = summarize(rounds)
+    out.append(f"| {sample} | {mode} | {row['ref_ms']:.0f} | {row['tree_ms']:.0f} | {row['change']:+.1f}% | "
+               f"{row['low']:+.0f} to {row['high']:+.0f} | {row['verdict']} | "
+               f"{'same' if same[(sample, mode)] else 'differs'} |")
+  out += ["", "Change is the median of the differences within each round, so it can disagree with the two medians "
+          "beside it, which load moves separately. Trust Change and the Verdict."]
+  return "\n".join(out)
+
+
+def main():
+  parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+  parser.add_argument("ref", help="Git ref to compare the working tree with")
+  parser.add_argument("--rounds", type=int, default=15, help="Rounds per sample and mode (default: 15)")
+  parser.add_argument("--sample", action="append", choices=SAMPLES, help="Only this sample; repeatable")
+  parser.add_argument("--mode", action="append", choices=list(MODES), help="Only this mode; repeatable")
+  parser.add_argument("--timeout", type=int, default=60, help="nvcat --timeout per render (default: 60)")
+  args = parser.parse_args()
+  if args.rounds < 1:
+    parser.error("--rounds must be at least 1")
+  commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--verify", "--quiet", f"{args.ref}^{{commit}}"],
+                          capture_output=True, text=True)
+  if commit.returncode != 0:
+    parser.error(f"no such ref: {args.ref}")
+  pairs = [(sample, mode) for sample in args.sample or SAMPLES for mode in args.mode or MODES]
+  with tempfile.TemporaryDirectory(prefix="nvcat-compare-") as exported:
+    archive = subprocess.Popen(["git", "-C", str(ROOT), "archive", commit.stdout.strip()], stdout=subprocess.PIPE)
+    subprocess.run(["tar", "-x", "-C", exported], stdin=archive.stdout, check=True)
+    archive.stdout.close()
+    if archive.wait() != 0:
+      raise SystemExit(f"compare: git archive {args.ref} failed")
+    roots = {"ref": exported, "tree": ROOT}
+
+    def render(side, sample, mode):
+      command, environment = render_command(roots[side], sample, mode, args.timeout)
+      start = time.perf_counter()
+      result = subprocess.run(command, capture_output=True, env=environment)
+      elapsed = (time.perf_counter() - start) * 1000
+      if result.returncode != 0 or not result.stdout:
+        raise SystemExit(f"compare: {side} {sample}/{mode} failed: {result.stderr.decode(errors='replace').strip()}")
+      return elapsed, result.stdout
+
+    times, same = measure(pairs, args.rounds, render)
+  print(table(args.ref, times, same))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

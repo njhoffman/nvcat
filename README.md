@@ -338,6 +338,7 @@ coverage lists) first when Neovim, its syntax files or parsers, or bat change (`
 ```sh
 benchmarks/run            # waits for load <= 0.6 x CPUs, records, updates SYNTAX.md
 benchmarks/run --dry-run  # print the table only
+benchmarks/compare v0.27.0 --sample large --mode viewport  # a ref against the working tree; records nothing
 ```
 
 Renders four generated samples ([benchmarks/](benchmarks/): small, medium, large, and a code-fence-heavy
@@ -345,7 +346,9 @@ one; regenerate them with `benchmarks/generate.py`) in complete, viewport, and f
 variables, which is the time to the first usable preview), appends the medians of wall time, startup and peak
 Neovim and Python RSS to `benchmarks/history.tsv`, and rewrites the comparison table in
 [SYNTAX.md](SYNTAX.md#markdown-rendering-benchmarks) against the average of all earlier runs. Run it after
-every change. The samples and modes run round-robin, so a burst of load from another process spreads over
+every change. To check whether one change made a difference, also on a machine in use, use `benchmarks/compare`: the
+two trees take turns, and a row counts as slower or faster only when the middle 50% of the differences is on one side
+of zero. It also says whether the output changed. The samples and modes run round-robin, so a burst of load from another process spreads over
 all rows; a run is printed but not recorded (exit 3) when the load ends above the gate or startup, which does
 not depend on the document, is over 1.5 times its median of the last five runs. `--record-noisy` records it
 anyway, for a startup that really changed.
