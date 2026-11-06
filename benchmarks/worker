@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import random
+import shutil
 import signal
 import socket
 import statistics
@@ -30,8 +31,14 @@ import nvcat_cli as nvcat  # noqa: E402
 
 CLIENT = HERE / "worker_client.py"
 COLUMNS, LINES = 100, 40
+MAX_RSS_MIB = 200  # A worker's Neovim grows with what it has cached, and restarting it costs one slower preview.
 GRACE_SECONDS = 0.3  # A cancelled render that Neovim cannot leave by then is cheaper to kill than to wait out.
 LATENCY_EXTRA = ["tests/fixtures/astro/page.astro", "tests/fixtures/cuda/kernel.cu", "README.md"]
+
+
+def client_variable(name):
+  """The variables worker_client.py sends: what decides the config and color. The worker runs under the client's."""
+  return (name.startswith("NVCAT_") and name != "NVCAT_TEST_SESSION") or name in ("NO_COLOR", "XDG_CONFIG_HOME", "HOME")
 
 
 def fresh_command(path, width, height):
@@ -59,33 +66,80 @@ def settle(renderer):
     renderer.timeout = timeout
 
 
+def tracked(settings, paths):
+  """The files a running Neovim has already read: when one changes it is stale, and its colors would be silently old."""
+  files = [config.config_file(), ROOT / "profile.lua", ROOT / "nvcat_cli.py", ROOT / "config.py",
+           Path(shutil.which(settings["nvim"]) or settings["nvim"])]
+  for value in (paths.get("theme"), paths.get("markdown_options")):
+    if value:
+      files += sorted(Path(value).parent.rglob("*.lua"))  # A theme or an options file can require its neighbours.
+  for value in (paths.get("parser_dir"), paths.get("render_markdown"), paths.get("icons")):
+    if value:
+      files += [Path(value), *sorted(Path(value).glob("*"))]
+      files += sorted((Path(value) / "parser").glob("*"))
+  return files
+
+
+def fingerprint(files):
+  stamps = []
+  for file in files:
+    try:
+      status = file.stat()
+      stamps.append((status.st_mtime_ns, status.st_size))
+    except OSError:
+      stamps.append(None)
+  return stamps
+
+
 def serve(socket_path):
-  settings = config.load()[0]
-  pager = nvcat.resolve_pager(settings["pager"])
-  color = nvcat.use_color(settings["color"])
-  links = color and nvcat.hyperlinks(settings["hyperlinks"], pager, "never", False)
-  if links:
-    links = settings["link_schemes"] or config.DEFAULT_LINK_SCHEMES
-  paths = nvcat.find_paths(settings)
+  stats = {"previews": 0, "skipped": 0, "cancelled": 0, "killed": 0, "stale": 0, "over_rss": 0, "stat_ms": []}
   listener = socket.socket(socket.AF_UNIX)
   listener.bind(socket_path)
   listener.listen(16)
   with nvcat.run_directory() as temporary:
     nvcat.restrict_writes(temporary)
-    def spawn():
-      return nvcat.Renderer(settings["nvim"], paths, temporary, COLUMNS, LINES, 20, nvcat.Timings(), "auto", links, color)
-    renderer = spawn()
-    width, height = COLUMNS, LINES
-    print(f"ready {renderer.process.pid}", flush=True)
+    state = {}
+
+    def start(environment):
+      """Read the config as the client's environment gives it, and start a Neovim with it."""
+      for name in [name for name in os.environ if client_variable(name)]:
+        del os.environ[name]
+      os.environ.update(environment)
+      settings = config.load()[0]
+      color = nvcat.use_color(settings["color"])
+      links = color and nvcat.hyperlinks(settings["hyperlinks"], nvcat.resolve_pager(settings["pager"]), "never", False)
+      if links:
+        links = settings["link_schemes"] or config.DEFAULT_LINK_SCHEMES
+      paths = nvcat.find_paths(settings)
+      state.update(environment=environment, files=tracked(settings, paths))
+      state.update(stamps=fingerprint(state["files"]), width=COLUMNS, height=LINES)
+      state["renderer"] = nvcat.Renderer(settings["nvim"], paths, temporary, COLUMNS, LINES, 20, nvcat.Timings(), "auto",
+                                         links, color)
+
+    start({k: v for k, v in os.environ.items() if client_variable(k)})
+    print(f"ready {state['renderer'].process.pid}", flush=True)
     while True:
       connection, _ = listener.accept()
       with connection:
         request = json.loads(connection.makefile().readline())
         if request.get("quit"):
           break
+        if request.get("stats"):
+          connection.sendall(json.dumps({**stats, "nvim": state["renderer"].process.pid}).encode())
+          continue
         if nvcat.client_gone(connection):  # Abandoned while it waited its turn.
+          stats["skipped"] += 1
           continue
         try:
+          environment = {k: v for k, v in request["environment"].items() if client_variable(k)}
+          began = time.perf_counter()
+          stale = fingerprint(state["files"]) != state["stamps"]
+          stats["stat_ms"].append((time.perf_counter() - began) * 1000)
+          if stale or environment != state["environment"]:
+            stats["stale"] += 1
+            state["renderer"].close()
+            start(environment)
+          renderer = state["renderer"]
           path = nvcat.input_path(Path(request["path"]))
           filetype = nvcat.resolve_filetype(None, Path(request["path"]))
           auto = filetype is not None and "accept" in filetype
@@ -95,31 +149,49 @@ def serve(socket_path):
           renderer.ready.clear()
           renderer.errors.clear()
           renderer.request("nvim_exec_lua", "nvcat.reset()", [])
-          if (request["width"], request["height"]) != (width, height):
-            width, height = request["width"], request["height"]
-            renderer.request("nvim_ui_try_resize", width, max(height, nvcat.MIN_GRID_ROWS))
+          if (request["width"], request["height"]) != (state["width"], state["height"]):
+            state["width"], state["height"] = request["width"], request["height"]
+            renderer.request("nvim_ui_try_resize", state["width"], max(state["height"], nvcat.MIN_GRID_ROWS))
           renderer.watch = connection
-          output, _ = renderer.render(path, width, height, 1, False, filetype)
+          output, _ = renderer.render(path, state["width"], state["height"], 1, False, filetype)
           connection.sendall(b"O" + output)
+          stats["previews"] += 1
         except BrokenPipeError:
           pass
         except nvcat.Cancelled:
-          if not settle(renderer):
-            renderer = spawn()
-            width, height = COLUMNS, LINES
-        except Exception as error:  # noqa: BLE001 - a trial reports every failure to its client.
+          stats["cancelled"] += 1
+          if not settle(state["renderer"]):
+            stats["killed"] += 1
+            start(state["environment"])
+        except Exception as error:  # noqa: BLE001 - a trial reports every failure to its client, which can run fresh.
           with contextlib.suppress(OSError):
             connection.sendall(b"E" + f"{type(error).__name__}: {error}\n".encode())
         finally:
-          renderer.watch = None
-    renderer.close()
+          state["renderer"].watch = None
+      if rss_mib(state["renderer"].process.pid) > MAX_RSS_MIB:  # Between previews, so nobody waits on the close.
+        stats["over_rss"] += 1
+        state["renderer"].close()
+        start(state["environment"])
+    state["renderer"].close()
+
+
+def rss_mib(pid):
+  with contextlib.suppress(OSError):
+    for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+      if line.startswith("VmRSS:"):
+        return int(line.split()[1]) / 1024
+  return 0.0
 
 
 class Worker:
+  def __init__(self, environment=None):
+    self.environment = environment
+
   def __enter__(self):
     self.directory = tempfile.TemporaryDirectory(prefix="nvcat-worker-")
     self.socket = str(Path(self.directory.name) / "socket")
-    self.process = subprocess.Popen([sys.executable, __file__, "--serve", self.socket], stdout=subprocess.PIPE, text=True)
+    self.process = subprocess.Popen([sys.executable, __file__, "--serve", self.socket], stdout=subprocess.PIPE, text=True,
+                                    env={**os.environ, **(self.environment or {})})
     word, pid = self.process.stdout.readline().split()
     assert word == "ready", word
     self.nvim = int(pid)
@@ -136,9 +208,9 @@ class Worker:
       self.process.kill()
     self.directory.cleanup()
 
-  def preview(self, path, width=COLUMNS, height=LINES):
+  def preview(self, path, width=COLUMNS, height=LINES, environment=None):
     return subprocess.run([sys.executable, "-I", "-S", str(CLIENT), self.socket, str(path), str(width), str(height)],
-                          capture_output=True, check=False)
+                          capture_output=True, check=False, env={**os.environ, **(environment or {})})
 
   def abandon(self, path, after_ms):
     """Start a preview and kill its client after a delay, as fzf does when the selection moves."""
@@ -148,11 +220,14 @@ class Worker:
     client.terminate()
     client.wait()
 
+  def stats(self):
+    with socket.socket(socket.AF_UNIX) as connection:
+      connection.connect(self.socket)
+      connection.sendall(b'{"stats": true}\n')
+      return json.loads(connection.makefile().read())
+
   def rss_mib(self):
-    for line in Path(f"/proc/{self.nvim}/status").read_text().splitlines():
-      if line.startswith("VmRSS:"):
-        return int(line.split()[1]) / 1024
-    return 0.0
+    return rss_mib(self.stats()["nvim"])
 
 
 def timed(function):
@@ -253,6 +328,52 @@ def cancel_part(rounds):
       print(f"| {after} | {b:.0f} | {a:.0f} | {b - a:+.0f} |", flush=True)
 
 
+def stale_part():
+  """Worker output after each thing a user changes must equal a fresh nvcat's under the same change."""
+  work = Path(tempfile.mkdtemp(prefix="nvcat-stale-"))
+  theme = work / "theme.lua"
+  conf = work / "config.toml"
+  def write_theme(color):
+    theme.write_text('return { apply = function() vim.api.nvim_set_hl(0, "Normal", { fg = "%s" })\n'
+                     'vim.api.nvim_set_hl(0, "markdownH1", { fg = "%s" })\n'
+                     'vim.api.nvim_set_hl(0, "@markup.heading.1.markdown", { fg = "%s" }) end }\n' % (color, color, color))
+  write_theme("#112233")
+  conf.write_text(f'theme = "{theme}"\n')
+  environment = {"NVCAT_CONFIG": str(conf)}
+  document = HERE / "small.md"
+  def check(name, worker, variables, expect_restart):
+    before = worker.stats()["stale"]
+    result = worker.preview(document, environment=variables)
+    command, env = fresh_command(document, COLUMNS, LINES)
+    fresh = subprocess.run(command, env={**env, **variables}, capture_output=True, check=True)
+    restarted = worker.stats()["stale"] - before
+    good = result.returncode == 0 and result.stdout == fresh.stdout and restarted == expect_restart
+    print(f"stale: {name}: {'same as fresh' if result.stdout == fresh.stdout else 'DIFFERENT'}, restarts {restarted}, "
+          f"expected {expect_restart}{'' if good else '  FAILED ' + result.stderr.decode()[:200]}", flush=True)
+    return good
+  ok = True
+  with Worker(environment) as worker:
+    ok &= check("first preview", worker, environment, 0)
+    ok &= check("nothing changed", worker, environment, 0)
+    write_theme("#aa5500")
+    ok &= check("theme file edited", worker, environment, 1)
+    conf.write_text(f'theme = "{theme}"\ncolor = "never"\n')
+    ok &= check("config.toml edited", worker, environment, 1)
+    conf.write_text(f'theme = "{theme}"\n')
+    ok &= check("config.toml edited back", worker, environment, 1)
+    ok &= check("NVCAT_COLOR set in the client", worker, {**environment, "NVCAT_COLOR": "never"}, 1)
+    ok &= check("NVCAT_COLOR gone again", worker, environment, 1)
+    good = worker.preview(document, environment=environment)
+    conf.write_text('nonsense = [\n')
+    bad = worker.preview(document, environment=environment)
+    print(f"stale: broken config: client exit {bad.returncode}, says {bad.stderr.decode()[:90].strip()!r}", flush=True)
+    ok &= bad.returncode == 1 and good.returncode == 0
+    conf.write_text(f'theme = "{theme}"\n')
+    ok &= check("config repaired", worker, environment, 1)
+    print("stale: stat check " + str(round(statistics.median(worker.stats()["stat_ms"]), 2)) + " ms per preview", flush=True)
+  return ok
+
+
 def memory_part(count):
   files = documents()
   with Worker() as worker:
@@ -262,13 +383,14 @@ def memory_part(count):
       worker.preview(files[number % len(files)])
       if (number + 1) % (count // 4) == 0:
         marks.append(f"{number + 1}: {worker.rss_mib():.0f}")
-    print(f"memory: Neovim RSS {start:.0f} MiB at start; after previews " + ", ".join(marks) + " MiB")
+    print(f"memory: Neovim RSS {start:.0f} MiB at start; after previews " + ", ".join(marks) + f" MiB; "
+          f"restarts over {MAX_RSS_MIB} MiB: {worker.stats()['over_rss']}")
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("--serve")
-  parser.add_argument("--part", choices=["output", "output-cancel", "latency", "cancel", "memory"], action="append")
+  parser.add_argument("--part", choices=["output", "output-cancel", "stale", "latency", "cancel", "memory"], action="append")
   parser.add_argument("--rounds", type=int, default=9)
   parser.add_argument("--seed", type=int, default=1)
   parser.add_argument("--verbose", action="store_true")
@@ -277,12 +399,14 @@ if __name__ == "__main__":
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)
     serve(args.serve)
     sys.exit(0)
-  parts = args.part or ["output", "output-cancel", "latency", "cancel", "memory"]
+  parts = args.part or ["output", "output-cancel", "stale", "latency", "cancel", "memory"]
   ok = True
   if "output" in parts:
     ok = output_part(args.seed, args.verbose)
   if "output-cancel" in parts:
     ok = output_part(args.seed, args.verbose, abandon=True) and ok
+  if "stale" in parts:
+    ok = stale_part() and ok
   if "latency" in parts:
     latency_part(args.rounds)
   if "cancel" in parts:

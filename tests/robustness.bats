@@ -5,7 +5,7 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  ROOT=$(cd "$BATS_TEST_DIRNAME/.." && pwd)
+  ROOT=$(cd "$BATS_TEST_DIRNAME/.." && pwd -P)  # common.py resolves symbolic links, and the leak checks compare paths.
   NVCAT=$ROOT/nvcat
   REFERENCE=$BATS_TEST_DIRNAME/fixtures/reference
   HELPERS=$BATS_TEST_DIRNAME/helpers
