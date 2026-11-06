@@ -30,6 +30,7 @@ import nvcat_cli as nvcat  # noqa: E402
 
 CLIENT = HERE / "worker_client.py"
 COLUMNS, LINES = 100, 40
+GRACE_SECONDS = 0.3  # A cancelled render that Neovim cannot leave by then is cheaper to kill than to wait out.
 LATENCY_EXTRA = ["tests/fixtures/astro/page.astro", "tests/fixtures/cuda/kernel.cu", "README.md"]
 
 
@@ -37,6 +38,25 @@ def fresh_command(path, width, height):
   environment = {k: v for k, v in os.environ.items() if k not in ("NVIM",)}
   environment.update(FZF_PREVIEW_COLUMNS=str(width), FZF_PREVIEW_LINES=str(height))
   return [str(ROOT / "nvcat"), "--paging=never", "--timeout", "20", str(path)], environment
+
+
+def settle(renderer):
+  """After a cancelled render: True when Neovim answers within the grace period, else kill it and return False.
+  Lua that is running cannot be interrupted over RPC, and a large file can hold Neovim for seconds."""
+  renderer.watch = None
+  timeout, renderer.timeout = renderer.timeout, GRACE_SECONDS
+  try:
+    # Wiping can be the slow part, and work queued for the document follows it, so answer only after both.
+    renderer.request("nvim_exec_lua", "nvcat.reset()", [])
+    renderer.request("nvim_exec_lua", "return 0", [])
+    return True
+  except nvcat.TimedOut:
+    os.killpg(renderer.process.pid, signal.SIGKILL)
+    renderer.process.wait()
+    renderer.close()
+    return False
+  finally:
+    renderer.timeout = timeout
 
 
 def serve(socket_path):
@@ -52,7 +72,9 @@ def serve(socket_path):
   listener.listen(16)
   with nvcat.run_directory() as temporary:
     nvcat.restrict_writes(temporary)
-    renderer = nvcat.Renderer(settings["nvim"], paths, temporary, COLUMNS, LINES, 20, nvcat.Timings(), "auto", links, color)
+    def spawn():
+      return nvcat.Renderer(settings["nvim"], paths, temporary, COLUMNS, LINES, 20, nvcat.Timings(), "auto", links, color)
+    renderer = spawn()
     width, height = COLUMNS, LINES
     print(f"ready {renderer.process.pid}", flush=True)
     while True:
@@ -61,6 +83,8 @@ def serve(socket_path):
         request = json.loads(connection.makefile().readline())
         if request.get("quit"):
           break
+        if nvcat.client_gone(connection):  # Abandoned while it waited its turn.
+          continue
         try:
           path = nvcat.input_path(Path(request["path"]))
           filetype = nvcat.resolve_filetype(None, Path(request["path"]))
@@ -74,13 +98,20 @@ def serve(socket_path):
           if (request["width"], request["height"]) != (width, height):
             width, height = request["width"], request["height"]
             renderer.request("nvim_ui_try_resize", width, max(height, nvcat.MIN_GRID_ROWS))
+          renderer.watch = connection
           output, _ = renderer.render(path, width, height, 1, False, filetype)
           connection.sendall(b"O" + output)
         except BrokenPipeError:
           pass
+        except nvcat.Cancelled:
+          if not settle(renderer):
+            renderer = spawn()
+            width, height = COLUMNS, LINES
         except Exception as error:  # noqa: BLE001 - a trial reports every failure to its client.
           with contextlib.suppress(OSError):
             connection.sendall(b"E" + f"{type(error).__name__}: {error}\n".encode())
+        finally:
+          renderer.watch = None
     renderer.close()
 
 
@@ -109,6 +140,14 @@ class Worker:
     return subprocess.run([sys.executable, "-I", "-S", str(CLIENT), self.socket, str(path), str(width), str(height)],
                           capture_output=True, check=False)
 
+  def abandon(self, path, after_ms):
+    """Start a preview and kill its client after a delay, as fzf does when the selection moves."""
+    client = subprocess.Popen([sys.executable, "-I", "-S", str(CLIENT), self.socket, str(path), str(COLUMNS), str(LINES)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(after_ms / 1000)
+    client.terminate()
+    client.wait()
+
   def rss_mib(self):
     for line in Path(f"/proc/{self.nvim}/status").read_text().splitlines():
       if line.startswith("VmRSS:"):
@@ -134,7 +173,8 @@ def documents():
   return files
 
 
-def output_part(seed, verbose):
+def output_part(seed, verbose, abandon=False):
+  chooser = random.Random(seed + 1)
   sizes = [(COLUMNS, LINES), (80, 24)]
   files = documents()
   expected = {}
@@ -150,12 +190,14 @@ def output_part(seed, verbose):
   failed = {}
   with Worker() as worker:
     for file, width, height in jobs:
+      if abandon:
+        worker.abandon(chooser.choice(files), chooser.choice((0, 25, 50, 100, 150)))
       result = worker.preview(file, width, height)
       if result.returncode:
         failed[file, width, height] = result.stderr.decode(errors="replace").strip()
       elif result.stdout != expected[file, width, height][1]:
         different[file, width, height] = different.get((file, width, height), 0) + 1
-  print(f"output: {len(jobs)} previews of {len(files)} files, seed {seed}; {len(fell_back)} size/file pairs left out (fresh nvcat "
+  print(f"output{' with an abandoned preview before each' if abandon else ''}: {len(jobs)} previews of {len(files)} files, seed {seed}; {len(fell_back)} size/file pairs left out (fresh nvcat "
         f"fell back or failed); different {len(different)} pairs, failed {len(failed)} pairs")
   if verbose:
     for key, count in sorted(different.items(), key=str):
@@ -195,19 +237,20 @@ def latency_part(rounds):
 def cancel_part(rounds):
   small = HERE / "small.md"
   big = HERE / "large.md"
-  normal, cancelled = [], []
+  print("| Client killed after (ms) | Next preview of small.md (ms) | Normal (ms) | Added (ms) |")
+  print("|---|---:|---:|---:|")
   with Worker() as worker:
     worker.preview(big)
     worker.preview(small)
-    for _ in range(rounds):
-      normal.append(timed(lambda: worker.preview(small))[0])
-      for _ in range(3):  # A user moving through a list: each request abandoned at once.
-        with socket.socket(socket.AF_UNIX) as connection:
-          connection.connect(worker.socket)
-          connection.sendall(json.dumps({"path": str(big), "width": COLUMNS, "height": LINES}).encode() + b"\n")
-      cancelled.append(timed(lambda: worker.preview(small))[0])
-  print(f"cancel: small.md {statistics.median(normal):.0f} ms; after 3 abandoned previews of large.md, "
-        f"with no cancellation in this worker, {statistics.median(cancelled):.0f} ms")
+    for after in (0, 25, 50, 75, 100, 150):
+      normal, cancelled = [], []
+      for _ in range(rounds):
+        normal.append(timed(lambda: worker.preview(small))[0])
+        for _ in range(3):  # Moving through a list: each preview abandoned in turn.
+          worker.abandon(big, after)
+        cancelled.append(timed(lambda: worker.preview(small))[0])
+      a, b = statistics.median(normal), statistics.median(cancelled)
+      print(f"| {after} | {b:.0f} | {a:.0f} | {b - a:+.0f} |", flush=True)
 
 
 def memory_part(count):
@@ -225,7 +268,7 @@ def memory_part(count):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("--serve")
-  parser.add_argument("--part", choices=["output", "latency", "cancel", "memory"], action="append")
+  parser.add_argument("--part", choices=["output", "output-cancel", "latency", "cancel", "memory"], action="append")
   parser.add_argument("--rounds", type=int, default=9)
   parser.add_argument("--seed", type=int, default=1)
   parser.add_argument("--verbose", action="store_true")
@@ -234,10 +277,12 @@ if __name__ == "__main__":
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)
     serve(args.serve)
     sys.exit(0)
-  parts = args.part or ["output", "latency", "cancel", "memory"]
+  parts = args.part or ["output", "output-cancel", "latency", "cancel", "memory"]
   ok = True
   if "output" in parts:
     ok = output_part(args.seed, args.verbose)
+  if "output-cancel" in parts:
+    ok = output_part(args.seed, args.verbose, abandon=True) and ok
   if "latency" in parts:
     latency_part(args.rounds)
   if "cancel" in parts:

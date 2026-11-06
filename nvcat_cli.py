@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import select
+import socket
 import shlex
 import shutil
 import signal
@@ -321,6 +322,20 @@ class SafeStderr:
     return getattr(self.stream, name)
 
 
+class Cancelled(Exception):
+  """The client of a worker's render has gone."""
+
+
+def client_gone(connection):
+  """True once the peer of a Unix socket has closed it. Clients send one line, so nothing else is readable."""
+  try:
+    return connection.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) == b""
+  except BlockingIOError:
+    return False
+  except OSError:
+    return True
+
+
 class Renderer:
   def __init__(self, executable, paths, temporary, width, height, timeout, timings=None, syntax="auto",
                hyperlinks=True, color=True):
@@ -341,6 +356,7 @@ class Renderer:
     self.token = 0
     self.timeout = timeout
     self.budget_deadline = None  # Overall deadline for complete output, see render(budget=...)
+    self.watch = None  # A worker's client connection: its closing cancels the render.
     self.flushes = 0
     self.unpacker = msgpack.Unpacker(raw=False, strict_map_key=False)
     env = isolated_environment(temporary)
@@ -389,7 +405,15 @@ class Renderer:
   def pump(self, deadline):
     budgeted = self.budget_deadline is not None and self.budget_deadline < deadline
     remaining = (self.budget_deadline if budgeted else deadline) - time.monotonic()
-    if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+    readers = [self.process.stdout] + ([self.watch] if self.watch else [])
+    readable = select.select(readers, [], [], max(remaining, 0))[0]
+    if self.watch in readable:
+      if client_gone(self.watch):
+        raise Cancelled()
+      self.watch = None  # Bytes a client should not send: readable for good, so stop looking rather than spin.
+      if remaining > 0 and self.process.stdout not in readable:
+        return
+    if remaining <= 0 or self.process.stdout not in readable:
       detail = ("; Neovim reported: " + "; ".join(self.errors)) if self.errors else ""
       if budgeted:
         raise TooLarge("complete output took longer than the budget (--budget)" + detail)
