@@ -2,7 +2,8 @@
 """The worker behind NVCAT_WORKER=1: one embedded Neovim that serves fzf previews over a Unix socket.
 
 nvcat_client.py starts it, and it exits after NVCAT_WORKER_IDLE seconds without a request (default 600). A preview it
-cannot serve gets an E reply, and nvcat renders that one itself. Usage: nvcat_worker.py SOCKET
+cannot serve gets an E reply, and nvcat renders that one itself; one over a limit gets an L reply and its message, and
+nvcat goes to its fallback without trying again. Usage: nvcat_worker.py SOCKET
 """
 
 import contextlib
@@ -76,6 +77,7 @@ def settle(renderer):
   """After a cancelled render: True when Neovim answers within the grace period, else kill it and return False.
   Lua that is running cannot be interrupted over RPC, and a large file can hold Neovim for seconds."""
   renderer.watch = None
+  renderer.budget_deadline = None
   timeout, renderer.timeout = renderer.timeout, GRACE_SECONDS
   try:
     # Wiping can be the slow part, and work queued for the document follows it, so answer only after both.
@@ -98,7 +100,7 @@ class Worker:
     self.stamps = []
     self.width, self.height = COLUMNS, LINES
     self.stats = {"previews": 0, "skipped": 0, "cancelled": 0, "killed": 0, "stale": 0, "over_rss": 0, "refused": 0,
-                  "stat_ms": []}
+                  "over_limit": 0, "parse_waits": 0, "stat_ms": []}
 
   def start(self, environment):
     """Read the config as the client's environment gives it, and start a Neovim with it."""
@@ -142,7 +144,7 @@ class Worker:
     size = path.stat().st_size
     with open(path, "rb") as handle:
       binary = b"\0" in handle.read(nvcat.BINARY_PROBE)
-    filetype = nvcat.resolve_filetype(None, Path(request["path"]))
+    filetype = nvcat.resolve_filetype(request.get("filetype"), Path(request["path"]))
     # What nvcat decides by itself: bat for these, and the notices that go with it.
     if size > nvcat.MAX_BYTES or binary or (filetype is not None and "accept" in filetype):
       raise nvcat.Unsupported("not for the worker")
@@ -153,16 +155,34 @@ class Worker:
     renderer.ready.clear()
     renderer.errors.clear()
     renderer.request("nvim_exec_lua", "nvcat.reset()", [])
-    if (request["width"], request["height"]) != (self.width, self.height):
-      self.width, self.height = request["width"], request["height"]
-      renderer.request("nvim_ui_try_resize", self.width, max(self.height, nvcat.MIN_GRID_ROWS))
+    width, height, complete = request["width"], request["height"], request.get("complete", False)
+    if complete:
+      height = nvcat.complete_height(path, height)
+    if (width, height) != (self.width, self.height):
+      renderer.request("nvim_ui_try_resize", width, max(height, nvcat.MIN_GRID_ROWS))
+    # Complete output grows the grid, however it ends, so the next preview sizes it again.
+    self.width, self.height = width, None if complete else height
     renderer.watch = connection
     warnings = io.StringIO()
     with contextlib.redirect_stderr(warnings):
-      output, _ = renderer.render(path, self.width, self.height, 1, False, filetype)
+      output, _ = renderer.render(path, width, height, 1, complete, filetype, request.get("budget"))
     if warnings.getvalue():  # nvcat prints these to the user, so let it.
       raise nvcat.Unsupported("warnings")
     return output
+
+  def refuse(self, connection, error):
+    """Tell the client that it has to render, or fall back when it is a limit that a fresh render would reach too."""
+    limit = type(error) is nvcat.TooLarge
+    self.stats["over_limit" if limit else "refused"] += 1
+    if isinstance(error, nvcat.TimedOut) and self.renderer:
+      kill(self.renderer)
+      self.renderer = None
+    message = str(error).encode()
+    with contextlib.suppress(OSError):
+      connection.sendall(b"L %d\n" % len(message) + message if limit else b"E\n")
+    if limit and not settle(self.renderer):  # After replying: the client need not wait for Neovim to finish.
+      self.stats["killed"] += 1
+      self.renderer = None
 
   def handle(self, connection):
     connection.settimeout(REQUEST_SECONDS)
@@ -180,6 +200,7 @@ class Worker:
       output = self.render(request, connection)
       connection.sendall(b"O %d\n" % len(output) + output)
       self.stats["previews"] += 1
+      self.stats["parse_waits"] = self.renderer.timings.facts.get("parse_waits", 0)
     except nvcat.ClientGone:
       self.stats["cancelled"] += 1
       if not settle(self.renderer):
@@ -188,15 +209,11 @@ class Worker:
     except OSError:
       pass
     except Exception as error:  # noqa: BLE001 - nvcat renders it instead, and reports whatever is wrong.
-      self.stats["refused"] += 1
-      if isinstance(error, nvcat.TimedOut) and self.renderer:
-        kill(self.renderer)
-        self.renderer = None
-      with contextlib.suppress(OSError):
-        connection.sendall(b"E\n")
+      self.refuse(connection, error)
     finally:
       if self.renderer:
         self.renderer.watch = None
+        self.renderer.budget_deadline = None
     if self.renderer and rss_mib(self.renderer.process.pid) > MAX_RSS_MIB:
       self.stats["over_rss"] += 1
       self.stop()

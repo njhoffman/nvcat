@@ -186,8 +186,13 @@ Reviewed: 2026-11-03
   0.33.0: `NVCAT_WORKER=1`, `tests/worker.bats`, and `benchmarks/worker` for its measurements. Warm-worker results in
   `benchmarks/run` remain open below.
 - [ ] **`benchmarks/run` has no warm-worker mode.** (p3) [perf] `benchmarks/worker` reports only; record worker latency in the history.
-- [ ] **The worker does not cover `--all` or `nvcat-dispatch`.** (p3) [perf] The router calls `--all --paging=never --budget=2 --filetype`,
+- [x] **The worker does not cover `--all` or `nvcat-dispatch`.** (p3) [perf] The router calls `--all --paging=never --budget=2 --filetype`,
   so previews through it render fresh. Needs complete output in the worker, with its budget and output checked against fresh.
+  Done in 0.34.0; `benchmarks/worker --part output-router` and `--part router`.
+- [ ] **Growing a short grid can leave a paragraph unrendered.** (p3) [bug] Complete output from a 40-row grid of `large.md`
+  (888 lines) lost one paragraph's inline rendering in most runs, a different one each time. `complete_height` avoids that
+  jump, and 12 runs of a document wrapping from about 225 to 662 rows were clean, but the cause is not known, so a document
+  that wraps far past its line count may still hit it.
 - [ ] (p3) [perf] Add caching only if measurements justify it; include viewport, file content, theme, configuration, and parser versions.
   `benchmarks/run` then records cache hits as their own mode, apart from renders.
 - [x] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,

@@ -6,6 +6,19 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-06
+
+### Added
+
+- `NVCAT_WORKER=1` now also serves `--all`, `--paging=never`, `--budget` and `--filetype`, so previews through
+  `nvcat-dispatch` come from the worker too. A document over its budget goes to the fallback at once, without spending the
+  budget a second time.
+
+### Fixed
+
+- A preview could show no Tree-sitter colors at all when it was captured while Neovim's highlighter was still parsing.
+  nvcat now waits for the parse to finish. `--timings-json` reports the waits as `parse_waits`.
+
 ## [0.33.0] - 2026-11-06
 
 ### Added

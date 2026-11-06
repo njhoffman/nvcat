@@ -302,10 +302,12 @@ NVCAT_WORKER=1 fzf --preview 'nvcat {}'
 ```
 
 A repeat preview takes about 100 ms where a fresh one takes about 450 ms on the benchmark samples; the first of a filetype
-saves less, because Neovim still loads its queries. Output is byte-identical. It applies to `nvcat FILE` in an fzf preview,
-not to `--all`, other flags or `nvcat-dispatch`. The first preview starts the worker and renders by itself, and whatever
-the worker cannot serve (a binary or oversized file, an error, a worker busy for 2 s) renders the usual way, so a failure
-costs time and not output.
+saves less, because Neovim still loads its queries. Output is byte-identical. It applies inside an fzf preview to
+`nvcat FILE` and to `--all`, `--paging=never`, `--budget` and `--filetype`, which covers `nvcat-dispatch`; any other flag
+renders the usual way. Through the router the gain is smaller on long documents, because complete output still draws every
+row. The first preview starts the worker and renders by itself, and whatever the worker cannot serve (a binary or oversized
+file, an error, a worker busy for 2 s beyond any budget) renders the usual way, so a failure costs time and not output. A
+document over its budget goes straight to the fallback.
 
 The worker listens on a socket in `$XDG_RUNTIME_DIR/nvcat`, else `/tmp/nvcat-worker-UID`: a directory only you can enter,
 and it refuses other users' connections. It restarts Neovim when the theme, config, parsers or `NVCAT_*` variables change or

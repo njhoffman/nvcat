@@ -50,15 +50,29 @@ local function notify_ready(win)
     M.callbacks = (M.callbacks or 0) + 1
     -- Other queued work (render-markdown's own callbacks, Tree-sitter's async parsing) runs before this.
     local start = lap("queued", scheduled)
-    vim.cmd("redraw")
-    lap("redraw", start)
-    vim.rpcnotify(M.channel, "nvcat_ready", {
-      token = token,
-      buffer = vim.api.nvim_get_current_buf(),
-      topline = vim.fn.winsaveview().topline,
-      width = vim.api.nvim_win_get_width(win),
-      height = vim.api.nvim_win_get_height(win),
-    })
+    local function finish()
+      if token ~= M.token then
+        return
+      end
+      vim.cmd("redraw")
+      -- While its parse runs, the highlighter (0.12 and later) draws no colors at all, then asks for a redraw of its own.
+      -- The field is private; without it this signals at once, as it did.
+      local highlighter = vim.treesitter.highlighter.active[vim.api.nvim_get_current_buf()]
+      if highlighter and highlighter.parsing then
+        M.parse_waits = (M.parse_waits or 0) + 1
+        vim.defer_fn(finish, 1)
+        return
+      end
+      lap("redraw", start)
+      vim.rpcnotify(M.channel, "nvcat_ready", {
+        token = token,
+        buffer = vim.api.nvim_get_current_buf(),
+        topline = vim.fn.winsaveview().topline,
+        width = vim.api.nvim_win_get_width(win),
+        height = vim.api.nvim_win_get_height(win),
+      })
+    end
+    finish()
   end)
 end
 
@@ -657,6 +671,7 @@ function M.info()
     warnings = M.warnings,
     marks = M.marks,
     callbacks = M.callbacks,
+    parse_waits = M.parse_waits,
     render_passes = M.rendered and require("render-markdown.core.ui").get(vim.api.nvim_get_current_buf()).n or nil,
   }
 end

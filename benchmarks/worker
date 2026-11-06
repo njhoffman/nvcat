@@ -3,8 +3,9 @@
 
 A worker process holds one embedded Neovim and serves previews over a Unix socket to a thin client; the times are
 wall clock for the client process, against a fresh nvcat, in alternating pairs. Records nothing. Parts:
-output (worker bytes against fresh nvcat, every sample and fixture, shuffled, two passes, two sizes), latency,
-cancel (a request abandoned just before another), memory (Neovim's RSS over many previews).
+output (worker bytes against fresh nvcat, every sample and fixture, shuffled, two passes, two sizes), output-router (the
+same with nvcat-dispatch's flags), latency, router (through nvcat-dispatch), cancel (a request abandoned just before
+another), memory (Neovim's RSS over many previews).
 """
 
 import argparse
@@ -26,13 +27,14 @@ sys.path.insert(0, str(ROOT))
 from nvcat_worker import MAX_RSS_MIB, rss_mib
 
 COLUMNS, LINES = 100, 40
+ROUTER_FLAGS = ["--all", "--paging=never", "--budget=20"]  # nvcat-dispatch's, with a budget that load cannot reach.
 LATENCY_EXTRA = ["tests/fixtures/astro/page.astro", "tests/fixtures/cuda/kernel.cu", "README.md"]
 
 
-def fresh_command(path, width, height):
+def fresh_command(path, width, height, flags=()):
   environment = {k: v for k, v in os.environ.items() if k not in ("NVIM",)}
   environment.update(FZF_PREVIEW_COLUMNS=str(width), FZF_PREVIEW_LINES=str(height))
-  return [str(ROOT / "nvcat"), "--paging=never", "--timeout", "20", str(path)], environment
+  return [str(ROOT / "nvcat"), *(flags or ["--paging=never"]), "--timeout", "20", str(path)], environment
 
 
 class Worker:
@@ -68,14 +70,19 @@ class Worker:
       connection.sendall(json.dumps(request).encode() + b"\n")
       return connection.makefile().read()
 
-  def command(self, path, width, height, environment):
-    return ([str(ROOT / "nvcat"), str(path)],
+  def command(self, path, width, height, environment, flags=()):
+    return ([str(ROOT / "nvcat"), *flags, str(path)],
             {**os.environ, **(environment or {}), "NVCAT_WORKER": "1", "NVCAT_WORKER_DIR": self.directory.name,
              "FZF_PREVIEW_COLUMNS": str(width), "FZF_PREVIEW_LINES": str(height)})
 
-  def preview(self, path, width=COLUMNS, height=LINES, environment=None):
-    command, variables = self.command(path, width, height, environment)
+  def preview(self, path, width=COLUMNS, height=LINES, environment=None, flags=()):
+    command, variables = self.command(path, width, height, environment, flags)
     return subprocess.run(command, env=variables, capture_output=True, check=False)
+
+  def router(self, path):
+    """A preview as nvcat-dispatch makes it, which also runs its filetype match."""
+    _, variables = self.command(path, COLUMNS, LINES, {"NVCAT": str(ROOT / "nvcat")})
+    return subprocess.run([str(ROOT / "nvcat-dispatch"), str(path)], env=variables, capture_output=True, check=False)
 
   def abandon(self, path, after_ms):
     """Start a preview and kill its client after a delay, as fzf does when the selection moves."""
@@ -110,14 +117,14 @@ def documents():
   return files
 
 
-def output_part(seed, verbose, abandon=False):
+def output_part(seed, verbose, abandon=False, flags=()):
   chooser = random.Random(seed + 1)
   sizes = [(COLUMNS, LINES), (80, 24)]
   files = documents()
   expected = {}
   for file in files:
     for width, height in sizes:
-      command, environment = fresh_command(file, width, height)
+      command, environment = fresh_command(file, width, height, flags)
       result = subprocess.run(command, env=environment, capture_output=True, check=False)
       expected[file, width, height] = (result.returncode, result.stdout, result.stderr)
   fell_back = {key for key, value in expected.items() if value[0] != 0 or b"showing bat" in value[2]}
@@ -129,13 +136,19 @@ def output_part(seed, verbose, abandon=False):
     for file, width, height in jobs:
       if abandon:
         worker.abandon(chooser.choice(files), chooser.choice((0, 25, 50, 100, 150)))
-      result = worker.preview(file, width, height)
+      result = worker.preview(file, width, height, flags=flags)
       if result.returncode:
         failed[file, width, height] = result.stderr.decode(errors="replace").strip()
       elif result.stdout != expected[file, width, height][1]:
         different[file, width, height] = different.get((file, width, height), 0) + 1
+        if verbose:
+          wanted, got = expected[file, width, height][1].split(b"\n"), result.stdout.split(b"\n")
+          rows = [row for row, (a, b) in enumerate(zip(wanted, got)) if a != b]
+          print(f"  {file.name} {width}x{height}: {len(rows)} rows differ of {len(wanted)}/{len(got)}: {rows[:6]}", flush=True)
+          for row in rows[:2]:
+            print(f"    wanted {wanted[row][:220]!r}\n    got    {got[row][:220]!r}", flush=True)
     print(f"worker stats: {({k: v for k, v in worker.stats().items() if k not in ('stat_ms', 'nvim')})}")
-  print(f"output{' with an abandoned preview before each' if abandon else ''}: {len(jobs)} previews of {len(files)} files, seed {seed}; {len(fell_back)} size/file pairs left out (fresh nvcat "
+  print(f"output{' with an abandoned preview before each' if abandon else ''}{' with the router flags' if flags else ''}: {len(jobs)} previews of {len(files)} files, seed {seed}; {len(fell_back)} size/file pairs left out (fresh nvcat "
         f"fell back or failed); different {len(different)} pairs, failed {len(failed)} pairs")
   if verbose:
     for key, count in sorted(different.items(), key=str):
@@ -172,6 +185,31 @@ def latency_part(rounds):
     assert served >= rounds * 3, f"only {served} previews came from the worker"
     a, b = statistics.median(fresh), statistics.median(repeat)
     print(f"| {file.name} | {a:.0f} | {statistics.median(first):.0f} | {b:.0f} | {statistics.median(switch):.0f} | {100 * (a - b) / a:.0f}% |", flush=True)
+
+
+def router_part(rounds):
+  """Through the real nvcat-dispatch, so that the numbers include its filetype match and its bash."""
+  files = [HERE / f"{sample}.md" for sample in SAMPLES] + [ROOT / name for name in LATENCY_EXTRA]
+  print("| Document, through nvcat-dispatch | Fresh nvcat (ms) | Worker, repeat (ms) | Saved |")
+  print("|---|---:|---:|---:|")
+  variables = {**os.environ, "NVCAT": str(ROOT / "nvcat"), "FZF_PREVIEW_COLUMNS": str(COLUMNS), "FZF_PREVIEW_LINES": str(LINES)}
+  with Worker() as worker:
+    for file in files:
+      fresh, repeat = [], []
+      worker.router(file)
+      for number in range(rounds):
+        for which in ([0, 1] if number % 2 else [1, 0]):
+          if which:
+            fresh.append(timed(lambda: subprocess.run([str(ROOT / "nvcat-dispatch"), str(file)], env=variables,
+                                                      capture_output=True, check=True))[0])
+          else:
+            repeat.append(timed(lambda: worker.router(file))[0])
+      a, b = statistics.median(fresh), statistics.median(repeat)
+      print(f"| {file.name} | {a:.0f} | {b:.0f} | {100 * (a - b) / a:.0f}% |", flush=True)
+    stats = worker.stats()
+    print(f"router: served {stats['previews']}, refused {stats['refused']}, over a limit {stats['over_limit']}; "
+          f"Neovim RSS {worker.rss_mib():.0f} MiB")
+    assert stats["previews"] >= rounds * len(files), "previews did not come from the worker"
 
 
 def cancel_part(rounds):
@@ -254,21 +292,27 @@ def memory_part(count):
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=__doc__)
-  parser.add_argument("--part", choices=["output", "output-cancel", "stale", "latency", "cancel", "memory"], action="append")
+  parser.add_argument("--part", choices=["output", "output-cancel", "output-router", "stale", "latency", "router", "cancel", "memory"],
+                      action="append")
   parser.add_argument("--rounds", type=int, default=9)
   parser.add_argument("--seed", type=int, default=1)
   parser.add_argument("--verbose", action="store_true")
   args = parser.parse_args()
-  parts = args.part or ["output", "output-cancel", "stale", "latency", "cancel", "memory"]
+  parts = args.part or ["output", "output-cancel", "output-router", "stale", "latency", "router", "cancel", "memory"]
   ok = True
   if "output" in parts:
     ok = output_part(args.seed, args.verbose)
   if "output-cancel" in parts:
     ok = output_part(args.seed, args.verbose, abandon=True) and ok
+  if "output-router" in parts:
+    ok = output_part(args.seed, args.verbose, flags=ROUTER_FLAGS) and ok
+    ok = output_part(args.seed, args.verbose, abandon=True, flags=ROUTER_FLAGS) and ok
   if "stale" in parts:
     ok = stale_part() and ok
   if "latency" in parts:
     latency_part(args.rounds)
+  if "router" in parts:
+    router_part(args.rounds)
   if "cancel" in parts:
     cancel_part(args.rounds)
   if "memory" in parts:

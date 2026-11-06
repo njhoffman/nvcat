@@ -11,11 +11,12 @@ import sys
 
 # How long a preview waits for a busy worker before rendering by itself.
 WAIT_SECONDS = 2.0
+DEFAULT_BUDGET = 5.0  # As nvcat's --budget.
 
 
 def client_variable(name):
   """The variables that decide the config and color. The worker's Neovim runs under the latest client's."""
-  if name in ("NVCAT_WORKER", "NVCAT_WORKER_DIR", "NVCAT_WORKER_IDLE", "NVCAT_TEST_SESSION"):
+  if name in ("NVCAT_WORKER", "NVCAT_WORKER_DIR", "NVCAT_WORKER_IDLE", "NVCAT_WORKER_LIMIT", "NVCAT_TEST_SESSION"):
     return False
   return name.startswith("NVCAT_") or name in ("NO_COLOR", "XDG_CONFIG_HOME", "HOME")
 
@@ -46,8 +47,48 @@ def start(path):
                      cwd="/", start_new_session=True)
 
 
+def request_from(arguments):
+  """What the worker needs from nvcat's arguments, or None when any of them is not one it serves. These are the flags
+  of nvcat-dispatch, which previews through the router: --all --paging=never --budget=SECONDS --filetype FILETYPE."""
+  file = filetype = None
+  complete = False
+  budget = DEFAULT_BUDGET
+  remaining = list(arguments)
+  while remaining:
+    argument = remaining.pop(0)
+    if argument == "--":
+      if len(remaining) != 1 or file is not None:
+        return None
+      file = remaining.pop()
+    elif argument == "--all":
+      complete = True
+    elif argument == "--paging=never":
+      pass
+    elif argument in ("--budget", "--filetype") or argument.startswith(("--budget=", "--filetype=")):
+      name, equals, value = argument.partition("=")
+      if not equals:
+        if not remaining:
+          return None
+        value = remaining.pop(0)
+      if name == "--filetype":
+        filetype = value
+      else:
+        try:
+          budget = float(value)
+        except ValueError:
+          return None
+    elif argument.startswith("-") or file is not None:
+      return None
+    else:
+      file = argument
+  # nvcat decides the rest: stdin, and a budget that is off or makes no sense.
+  if not file or file == "-" or not 0 < budget < 3600:
+    return None
+  return {"path": os.path.abspath(file), "filetype": filetype, "complete": complete, "budget": budget if complete else None}
+
+
 def receive(connection):
-  """The output of a whole reply, else None: a worker that died partway must leave nothing printed."""
+  """The status and data of a whole reply, else None: a worker that died partway must leave nothing printed."""
   header = b""
   while not header.endswith(b"\n"):
     chunk = connection.recv(1)
@@ -55,7 +96,7 @@ def receive(connection):
       return None
     header += chunk
   status, _, size = header.strip().partition(b" ")
-  if status != b"O":
+  if status not in (b"O", b"L"):
     return None
   wanted = int(size)
   parts = []
@@ -65,20 +106,21 @@ def receive(connection):
       return None
     parts.append(chunk)
     wanted -= len(chunk)
-  return b"".join(parts)
+  return status, b"".join(parts)
 
 
 def preview(arguments):
   """The exit status of a preview the worker served, or None."""
   columns, lines = os.environ.get("FZF_PREVIEW_COLUMNS", ""), os.environ.get("FZF_PREVIEW_LINES", "")
-  if len(arguments) != 1 or arguments[0].startswith("-") or not (columns.isdigit() and lines.isdigit()):
+  request = request_from(arguments)
+  if request is None or not (columns.isdigit() and lines.isdigit()):
     return None
   base = directory()
   if base is None:
     return None
   path = os.path.join(base, "worker.socket")
   connection = socket.socket(socket.AF_UNIX)
-  connection.settimeout(WAIT_SECONDS)
+  connection.settimeout(WAIT_SECONDS + (request["budget"] or 0))
   try:
     try:
       connection.connect(path)
@@ -86,15 +128,19 @@ def preview(arguments):
       start(path)
       return None
     connection.sendall(json.dumps({
-      "path": os.path.abspath(arguments[0]), "width": int(columns), "height": int(lines),
+      **request, "width": int(columns), "height": int(lines),
       "environment": {name: value for name, value in os.environ.items() if client_variable(name)},
     }).encode() + b"\n")
-    output = receive(connection)
+    reply = receive(connection)
   except (OSError, ValueError):
     return None
   finally:
     connection.close()
-  if output is None:
+  if reply is None:
+    return None
+  status, output = reply
+  if status == b"L":  # Over a limit: nvcat goes straight to its fallback, rather than spend the budget a second time.
+    os.environ["NVCAT_WORKER_LIMIT"] = output.decode()
     return None
   try:
     sys.stdout.buffer.write(output)

@@ -90,6 +90,88 @@ started() {
   [ "$(stat_of previews)" -eq 0 ]
 }
 
+@test "complete output with the router's flags: the same bytes, repeated and between sizes" {
+  large=$ROOT/benchmarks/large.md
+  flags=(--all --paging=never --budget=20 --filetype markdown --)
+  NVCAT_WORKER=0 "$NVCAT" "${flags[@]}" "$large" >"$BATS_TEST_TMPDIR/complete"
+  started
+  for _ in 1 2 3 4 5 6; do
+    "$NVCAT" "${flags[@]}" "$large" | cmp - "$BATS_TEST_TMPDIR/complete"
+  done
+  "$NVCAT" "$SAMPLE" | cmp - "$FRESH"  # The viewport after a grid grown for complete output.
+  "$NVCAT" --all --paging=never --budget=20 --filetype markdown -- "$large" | cmp - "$BATS_TEST_TMPDIR/complete"
+  [ "$(stat_of previews)" -eq 8 ]
+}
+
+@test "the real router's previews come from the worker, the same bytes" {
+  [ -x "$ROOT/nvcat-dispatch" ] || skip "no generated router"
+  export NVCAT=$ROOT/nvcat
+  NVCAT_WORKER=0 "$ROOT/nvcat-dispatch" "$SAMPLE" >"$BATS_TEST_TMPDIR/routed"
+  started
+  "$ROOT/nvcat-dispatch" "$SAMPLE" | cmp - "$BATS_TEST_TMPDIR/routed"
+  "$ROOT/nvcat-dispatch" -- "$SAMPLE" | cmp - "$BATS_TEST_TMPDIR/routed"
+  [ "$(stat_of previews)" -eq 2 ]
+}
+
+@test "a file named with a leading dash is served after --" {
+  dashed=$BATS_TEST_TMPDIR/-dashed.md
+  cp "$SAMPLE" "$dashed"
+  started
+  cd "$BATS_TEST_TMPDIR"
+  "$NVCAT" --all --budget=20 -- -dashed.md >"$BATS_TEST_TMPDIR/served"
+  NVCAT_WORKER=0 "$NVCAT" --all --budget=20 -- -dashed.md | cmp - "$BATS_TEST_TMPDIR/served"
+  [ "$(stat_of previews)" -eq 1 ]
+}
+
+@test "over the budget, nvcat goes to the fallback once, and the next preview is right" {
+  command -v bat >/dev/null || skip "bat is not installed"
+  large=$ROOT/benchmarks/large.md
+  NVCAT_WORKER=0 "$NVCAT" --all --budget=0.001 "$large" >"$BATS_TEST_TMPDIR/expected" 2>"$BATS_TEST_TMPDIR/expected.err"
+  started
+  "$NVCAT" --all --budget=0.001 "$large" >"$BATS_TEST_TMPDIR/got" 2>"$BATS_TEST_TMPDIR/got.err"
+  [ "$(stat_of over_limit)" -eq 1 ]
+  [ "$(stat_of refused)" -eq 0 ]
+  cmp "$BATS_TEST_TMPDIR/got" "$BATS_TEST_TMPDIR/expected"
+  cmp "$BATS_TEST_TMPDIR/got.err" "$BATS_TEST_TMPDIR/expected.err"
+  "$NVCAT" "$SAMPLE" | cmp - "$FRESH"
+  [ "$(stat_of previews)" -eq 1 ]
+}
+
+@test "flags and values the worker does not serve go the usual way" {
+  started
+  "$NVCAT" --all --budget=0 "$SAMPLE" >/dev/null
+  "$NVCAT" --all --budget=nonsense "$SAMPLE" >/dev/null 2>&1 || true
+  "$NVCAT" --all --fallback=none "$SAMPLE" >/dev/null
+  "$NVCAT" --all --timeout=5 "$SAMPLE" >/dev/null
+  "$NVCAT" --all "$SAMPLE" "$SAMPLE" >/dev/null 2>&1 || true
+  "$NVCAT" --filetype >/dev/null 2>&1 || true
+  [ "$(stat_of previews)" -eq 0 ]
+  [ "$(stat_of refused)" -eq 0 ]
+}
+
+@test "--filetype auto is left to nvcat" {
+  started
+  "$NVCAT" --all --filetype auto "$SAMPLE" >/dev/null
+  [ "$(stat_of previews)" -eq 0 ]
+  [ "$(stat_of refused)" -eq 1 ]
+}
+
+@test "a complete preview killed partway cancels it, and the next one is right" {
+  large=$ROOT/benchmarks/large.md
+  started
+  "$NVCAT" --all --budget=20 "$large" >"$BATS_TEST_TMPDIR/complete"
+  for delay in 0.02 0.08 0.15; do
+    "$NVCAT" --all --budget=20 "$large" >/dev/null &
+    client=$!
+    sleep "$delay"
+    kill "$client" 2>/dev/null || true
+    wait "$client" 2>/dev/null || true
+    "$NVCAT" "$SAMPLE" | cmp - "$FRESH"
+    "$NVCAT" --all --budget=20 "$large" | cmp - "$BATS_TEST_TMPDIR/complete"
+  done
+  [ "$(stat_of cancelled)" -ge 1 ]
+}
+
 @test "errors and the bat fallback are nvcat's own, unchanged" {
   started
   run --separate-stderr "$NVCAT" "$BATS_TEST_TMPDIR/missing.md"

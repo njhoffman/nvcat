@@ -541,6 +541,7 @@ class Renderer:
     facts.update(filetype=info["filetype"], engine=info["engine"], highlight_index=info.get("highlight_index"),
                  grid=f"{width}x{height}",
                  resizes=facts.get("resizes", 0) + resizes, ready_callbacks=info.get("callbacks"),
+                 parse_waits=info.get("parse_waits") or 0,
                  render_passes=info.get("render_passes"))
     phases = self.timings.phases
     phases["frames"] = phases.get("frames: first", 0) + phases.get("frames: resizes", 0)
@@ -1217,15 +1218,13 @@ def run(args, timings):
       # The probe accepted Neovim's filetype, and the pager's own detection reaches the same one.
       return page_nvim(settings["nvim"], paths, temporary, path, None if auto else filetype, args.syntax)
     if all_rows:
-      # Start near the final size: every full redraw costs rows x injected trees, and resizing a short grid to
-      # fit adds one. Wrapping and virtual rows can still need a resize.
-      with open(path, "rb") as handle:
-        source_rows = sum(chunk.count(b"\n") for chunk in iter(lambda: handle.read(1 << 16), b"")) + 1
-      height = max(height, min(MAX_ROWS, source_rows + 4))
+      height = complete_height(path, height)
     restrict_writes(temporary)
     renderer = None
     fallback = False
     try:
+      if limit := os.environ.pop("NVCAT_WORKER_LIMIT", None):  # The worker has just tried this document.
+        raise TooLarge(limit)
       renderer = Renderer(settings["nvim"], paths, temporary, width, height, args.timeout, timings, args.syntax,
                           links, args.use_color)
       output, _ = renderer.render(path, width, height, args.start_line, all_rows, filetype, args.budget)
@@ -1239,6 +1238,15 @@ def run(args, timings):
         renderer.close()
     # Inside the run directory's lifetime: an external pager gets it as TMPDIR, the only place it may write.
     return emit(output, args, all_rows, pager, timings, temporary, fallback)
+
+
+def complete_height(path, height):
+  """The grid height to start complete output at: near the final size. Every full redraw costs rows x injected trees,
+  and resizing a short grid to fit adds one; growing from a short grid can also leave a paragraph unrendered. Wrapping
+  and virtual rows can still need a resize."""
+  with open(path, "rb") as handle:
+    source_rows = sum(chunk.count(b"\n") for chunk in iter(lambda: handle.read(1 << 16), b"")) + 1
+  return max(height, min(MAX_ROWS, source_rows + 4))
 
 
 def fall_back(error, args, path, width, filetype, viewport, timings, start_line=1):
