@@ -55,10 +55,14 @@ local function notify_ready(win)
         return
       end
       vim.cmd("redraw")
-      -- While its parse runs, the highlighter (0.12 and later) draws no colors at all, then asks for a redraw of its own.
-      -- The field is private; without it this signals at once, as it did.
+      -- While its parse runs, the highlighter draws no colors at all, then asks for a redraw of its own. The field is
+      -- private: a boolean since 0.12, one per window in 0.11, and without it this signals at once.
       local highlighter = vim.treesitter.highlighter.active[vim.api.nvim_get_current_buf()]
-      if highlighter and highlighter.parsing then
+      local parsing = highlighter and highlighter.parsing
+      if type(parsing) == "table" then
+        parsing = parsing[win]
+      end
+      if parsing then
         M.parse_waits = (M.parse_waits or 0) + 1
         vim.defer_fn(finish, 1)
         return

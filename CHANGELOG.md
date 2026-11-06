@@ -6,6 +6,13 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-11-06
+
+### Fixed
+
+- On Neovim 0.11, Tree-sitter renders waited for the highlighter until the timeout and then fell back to bat. This came in
+  with 0.34.0, which took a per-window flag for a single one.
+
 ## [0.34.0] - 2026-11-06
 
 ### Added
