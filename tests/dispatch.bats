@@ -251,12 +251,24 @@ entry = filetypes.detect(sys.argv[2]); print(entry["filetype"] if entry else "")
   [[ $output == "bat --color=always "* ]]
 }
 
+# Print the fastest of 20 routings of $1, in ms. Load from other processes only adds time, so the minimum stays
+# meaningful on a busy machine where an average does not.
+fastest_route_ms() {
+  local start end took best=
+  for _ in {1..20}; do
+    start=${EPOCHREALTIME/[.,]/}
+    "$DISPATCH" --print "$1" >/dev/null || true
+    end=${EPOCHREALTIME/[.,]/}
+    took=$((end - start))
+    if [ -z "$best" ] || [ "$took" -lt "$best" ]; then best=$took; fi
+  done
+  echo $((best / 1000))
+}
+
 @test "routing is fast" {
-  start=$(date +%s%N)
-  for _ in 1 2 3 4 5 6 7 8 9 10; do "$DISPATCH" --print "$FIXTURES/conf/app.conf" >/dev/null; done
-  elapsed=$(( ($(date +%s%N) - start) / 10000000 ))
-  echo "average ${elapsed}ms"
-  [ "$elapsed" -lt 20 ]
+  fastest=$(fastest_route_ms "$FIXTURES/conf/app.conf")
+  echo "fastest ${fastest}ms"
+  [ "$fastest" -lt 20 ]
 }
 
 @test "filetypes.regex.json and SYNTAX.md's generated sections are current with Neovim and bat" {
@@ -330,11 +342,9 @@ sys.exit(1 if bad else 0)' "$ROOT"
 }
 
 @test "routing a file nvcat does not handle stays fast" {
-  start=$(date +%s%N)
-  for _ in 1 2 3 4 5 6 7 8 9 10; do "$DISPATCH" --print "$FIXTURES/bat/script.py" >/dev/null || true; done
-  elapsed=$(( ($(date +%s%N) - start) / 10000000 ))
-  echo "average ${elapsed}ms"
-  [ "$elapsed" -lt 30 ]
+  fastest=$(fastest_route_ms "$FIXTURES/bat/script.py")
+  echo "fastest ${fastest}ms"
+  [ "$fastest" -lt 30 ]
 }
 
 @test "content-detected globs route to auto" {

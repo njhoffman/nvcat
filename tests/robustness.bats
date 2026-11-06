@@ -114,6 +114,23 @@ nvims() {
   python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from common import embedded_nvims; print(" ".join(map(str, sorted(embedded_nvims()))))' "$HELPERS"
 }
 
+@test "the leak checks count this suite's Neovims, not another shell's" {
+  decoy() { "$@" python3 -c 'import time; time.sleep(30)' --embed "$ROOT/profile.lua" & }
+  decoy env; ours=$!
+  decoy env -u NVCAT_TEST_SESSION; theirs=$!
+  for pid in "$ours" "$theirs"; do
+    for _ in $(seq 1 100); do
+      grep -qa -- --embed "/proc/$pid/cmdline" && break
+      sleep 0.02
+    done
+  done
+  seen=" $(nvims) "
+  kill "$ours" "$theirs"
+  wait "$ours" "$theirs" || true
+  [[ $seen == *" $ours "* ]]
+  [[ $seen != *" $theirs "* ]]
+}
+
 cancel_during_render() {
   local signal=$1 before after pid
   before=$(nvims)

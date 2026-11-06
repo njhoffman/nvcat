@@ -6,6 +6,13 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-11-05
+
+### Fixed
+
+- The test suite no longer fails for reasons unrelated to the code: the routing speed tests hold up on a busy machine,
+  and the "Neovim left running" checks ignore renders from other shells.
+
 ## [0.26.0] - 2026-11-05
 
 ### Added

@@ -212,14 +212,18 @@ Reviewed: 2026-11-03
 - [x] (p2) [docs] Define memory and parsing limits before claiming streaming or large-file support.
   README "Limits and fallback": no streaming, viewport time and memory by input size. Table-heavy input is
   measured by `benchmarks/highlighter` (a 600-row table, 0.15.0).
-- [ ] **The routing speed tests fail under load.** (p3) [test] `tests/dispatch.bats` holds "routing is fast" to an
+- [x] **The routing speed tests fail under load.** (p3) [test] `tests/dispatch.bats` holds "routing is fast" to an
   absolute 20 ms average and "routing a file nvcat does not handle stays fast" to 30 ms. On 2026-11-03 the first
   failed at load 17, and both at load 20+ (the first passed alone at 4.7). Compare with a baseline measured in
   the same test, such as a `bash -c :` start, or use a looser limit.
-- [ ] **"Neovim left running" can blame an unrelated nvcat.** (p3) [test] `embedded_nvims()` matches every embedded
+  Done differently (0.26.1): the fastest of 20 routings, since load only adds time; the ratio to `bash -c :` swung from
+  3x to 17x under load. Passes with 32 spinning processes.
+- [x] **"Neovim left running" can blame an unrelated nvcat.** (p3) [test] `embedded_nvims()` matches every embedded
   Neovim using this checkout's `profile.lua` on the machine, and the installed `nvcat` links to this checkout, so a
   render from another shell during a test probably explains the one failure of `--syntax regex reaches the
   pager` on 2026-11-03 (5 of 5 passed alone). Track only descendants of the test's own nvcat.
+  Done differently (0.26.1): a session tag in the environment, because a leaked Neovim is reparented and would stop
+  being a descendant, which is the case these checks must catch.
 - [ ] **fzf sometimes does not exit in `tests/fzf.bats`.** (p3) [test] Once on 2026-11-03, fzf had not exited 10 s after
   ESC at the end of the session test, at load 3 (`TimeoutExpired` in `fzf_session.py`); every rendering check before
   it passed. It then passed 6 of 6, as did 0.21.0. Cause unknown: find out whether a preview ignores cancellation.
