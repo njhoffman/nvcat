@@ -96,6 +96,15 @@ bash_complete() {
   [[ ${lines[4]} == 'nvcat --hyperlinks never'* ]]
 }
 
+@test "completions zsh: sourcing it before compinit is quiet" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  "$NVCAT" completions zsh > "$SCRIPT"
+  run --separate-stderr zsh -f -c "source '$SCRIPT'; print -r -- sourced"
+  [ "$status" -eq 0 ]
+  [ "$output" = sourced ]
+  [ -z "$stderr" ]
+}
+
 @test "completions fish: complete -C offers options, values, shells and filetypes" {
   command -v fish >/dev/null || skip "fish not installed"
   "$NVCAT" completions fish > "$SCRIPT"

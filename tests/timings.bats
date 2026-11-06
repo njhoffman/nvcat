@@ -95,3 +95,16 @@ field() {
   run "$NVCAT" --syntax treesitter "$SAMPLE"
   [ "$status" -eq 2 ]
 }
+
+@test "--timings-json: a Markdown document runs render-markdown's handlers once, plus once per resize" {
+  run --separate-stderr "$NVCAT" --paging=never --columns 80 --all --budget 0 --timings-json "$SAMPLE"
+  [ "$status" -eq 0 ]
+  [ "$(field 'r["render_passes"]')" = 1 ]
+  [ "$(field 'r["ready_callbacks"]')" -ge 1 ]
+  # Long wrapped lines at 20 columns outgrow the first grid, and a resize has to render again.
+  file=$BATS_TEST_TMPDIR/wrapped.md
+  for _ in 1 2 3 4 5 6; do printf '%s\n\n' "$(printf 'word %.0s' {1..40})"; done >"$file"
+  run --separate-stderr "$NVCAT" --paging=never --columns 20 --all --budget 0 --timings-json "$file"
+  [ "$status" -eq 0 ]
+  [ "$(field 'r["resizes"] >= 1 and r["render_passes"] >= 2')" = True ]
+}

@@ -136,7 +136,7 @@ _nvcat() {{
 
 if [[ ${{funcstack[1]}} == _nvcat ]]; then
   _nvcat "$@"
-else
+elif (( $+functions[compdef] )); then
   compdef _nvcat nvcat
 fi
 '''

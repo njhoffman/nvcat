@@ -128,3 +128,36 @@ assert m.noise(busy, [], 2.0, 4.8) is None  # No history: nothing to compare wit
 print('ok')"
   [ "$output" = ok ]
 }
+
+@test "benchmarks/run compares with the average of all runs and the median of recent ones" {
+  run with_script run "
+history = [{'sample': 'small', 'mode': 'm', 'median_ms': str(v)} for v in (1000, 1000, 100, 100, 100, 100, 100)]
+row = dict(date='d', version='v', commit='c', load1='0', nvim='n', runs=3, sample='small', mode='m', median_ms=90,
+           startup_ms=1, nvim_rss_mib=2, python_rss_mib=3)
+cells = [cell.strip() for cell in m.table([row], history).splitlines()[-3].split('|')]
+header = [cell.strip() for cell in m.table([row], history).splitlines()[4].split('|')]
+assert len(cells) == len(header), (cells, header)
+named = dict(zip(header, cells))
+# The two old rows pull the average up; they are outside the last five, so the recent median ignores them.
+assert named['Average (ms)'] == '357' and named['vs average'] == '-75%', named
+assert named['Recent (ms)'] == '100' and named['vs recent'] == '-10%', named
+first = dict(zip(header, [cell.strip() for cell in m.table([row], []).splitlines()[-3].split('|')]))
+assert first['vs average'] == first['vs recent'] == 'first run', first
+print('ok')"
+  [ "$output" = ok ]
+}
+
+@test "benchmarks/run exits 2 when the load never drops, and records nothing" {
+  run with_script run "
+import contextlib, io
+m.wait_for_load = lambda *arguments: False
+m.append_history = m.update_syntax = lambda *arguments: (_ for _ in ()).throw(AssertionError('recorded'))
+sys.argv = ['run', '--max-wait', '0']
+errors = io.StringIO()
+with contextlib.redirect_stderr(errors):
+  status = m.main()
+assert status == 2, status
+assert 'nothing recorded' in errors.getvalue(), errors.getvalue()
+print('ok')"
+  [ "$output" = ok ]
+}

@@ -6,6 +6,24 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-05
+
+### Added
+
+- `--timings` and `--timings-json` report `render_passes`, how many times render-markdown ran its handlers.
+- The `benchmarks/run` table compares each result with the median of the last 5 runs as well as the all-time average,
+  which spans every version and so hides a recent change.
+
+### Changed
+
+- Complete Markdown output is up to 8% faster, and viewports up to 4%: render-markdown no longer renders each document
+  twice. The output is byte-identical.
+- `benchmarks/run` exits 2 when the load never drops low enough to start, instead of 1 like a failed render.
+
+### Fixed
+
+- Sourcing the zsh completion before `compinit` no longer prints `command not found: compdef`.
+
 ## [0.25.0] - 2026-11-03
 
 ### Added

@@ -22,11 +22,13 @@ Findings, in order of what they cost:
 1. **Frames dominate Markdown.** Everything up to a ready Neovim (imports, startup, open) is about 130 ms for
    any document; the rest is render-markdown's render and Neovim's redraw, which grow with the grid. Redraw is
    the larger part on tall grids: 1.2 s of large.md's 2 s.
-2. **Each Markdown frame redraws three times.** render-markdown calls `on.render` three times per frame
-   (which events trigger each is not yet traced), and `notify_ready` schedules a full `redraw` for each; all three finish before nvcat's `info()` request is answered. Non-Markdown filetypes redraw
-   once. `ready_callbacks` in `--timings` shows the count. Notifying once per token, after the explicit
-   update, is the most promising optimization (TODO.md), but it changes the ready protocol and needs the
-   tail/viewport tests to hold.
+2. **A Markdown frame signals three times but redraws once.** render-markdown calls `on.render` for three
+   updates: its forced `Initial` on attach, `BufWinEnter`, and nvcat's `Preview`. All three run before the first
+   scheduled `notify_ready`, so the first redraw does the work and the other two take about 0.1 ms
+   (`ready_callbacks` in `--timings` shows the count). Notifying once per token would save almost nothing, and
+   a signal sent between setting a new token and the resize would use up that token's only one. The cost was a
+   forced `Preview` running every handler a second time, 72 ms of large.md's 583 ms; since 0.26.0 it is not
+   forced, and `render_passes` in `--timings` is 1 plus one per resize.
 3. **Query compilation dominates cuda.** `vim.treesitter.start` takes about 390 ms for cuda (its highlights
    query inherits cpp's and c's), against 1-10 ms for most languages; `--syntax regex` renders the same file
    in about 130 ms. nu, fennel and cue pay 30-40 ms the same way.

@@ -120,7 +120,7 @@ Reviewed: 2026-11-03
 - [ ] **Decide which link schemes are clickable.** (p3) [feature] `[text](file:///etc/passwd)`, `javascript:` and `ssh://`
   all become hyperlinks, and rendering hides the target behind the text. Consider allowing only http, https and mailto by
   default, with a setting for more. A trade-off, not a clear bug: terminals differ in what they open and whether they ask.
-- [ ] **Sourcing the zsh completion before compinit prints an error.** (p3) [bug] `source <(nvcat completions zsh)` without
+- [x] **Sourcing the zsh completion before compinit prints an error.** (p3) [bug] `source <(nvcat completions zsh)` without
   compinit says `command not found: compdef`. The README says to load it after compinit, but the script can check for
   `compdef` and stay quiet, as generated scripts usually do.
 - [ ] **stdin ignores modelines.** (p3) [feature] `printf '# vim: ft=lua\n...' | nvcat -` renders Markdown, because stdin is
@@ -152,11 +152,13 @@ Reviewed: 2026-11-03
   `benchmarks/run` records an fzf mode, startup and peak RSS of Neovim and Python.
 - [x] (p2) [perf] Profile before optimizing; identify theme loading, parser loading, rendering, and RPC costs separately.
   `--timings`/`--timings-json`; findings in docs/PERFORMANCE.md.
-- [ ] **Redraw once per Markdown frame.** (p2) [perf] render-markdown calls `on.render` three times per frame and
+- [x] **Redraw once per Markdown frame.** (p2) [perf] render-markdown calls `on.render` three times per frame and
   each schedules a full `redraw` (`ready_callbacks` in `--timings`, still 3). With the highlighter index
   (0.15.0) redraw is 214 ms and render-markdown 246 ms of large.md's 672 ms (2026-11-03), down from 1.2 s of
   2 s. Trace which events fire them, then notify once per token after the explicit update, keeping the tail
   and viewport tests green.
+  Done differently (0.26.0): the trace showed the later redraws take 0.1 ms; the waste was a forced update running
+  every handler twice, so that update is no longer forced (`render_passes` 1). See docs/PERFORMANCE.md.
 - [ ] **Injected-language loading is unattributed.** (p3) [perf] astro spends ~140 ms in `parse` loading the
   TypeScript and CSS parsers and queries; time `language.add`/query loads for injections as their own phase.
 - [ ] **cuda query compilation.** (p3) [perf] `vim.treesitter.start` takes ~245 ms of cuda's ~300 ms (inherited
@@ -179,7 +181,7 @@ Reviewed: 2026-11-03
   `benchmarks/run` then records warm-worker results as their own mode, apart from fresh starts.
 - [ ] (p3) [perf] Add caching only if measurements justify it; include viewport, file content, theme, configuration, and parser versions.
   `benchmarks/run` then records cache hits as their own mode, apart from renders.
-- [ ] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
+- [x] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
   like a failed render, while `benchmarks/highlighter` exits 2 for the same case. Exit 2 here too. On
   2026-11-03 other processes held the load at 8-23 for the whole 15 minutes.
 - [ ] **Add a `benchmarks/compare REF` for busy machines.** (p3) [perf] `benchmarks/run` refused three runs in a row on
@@ -187,6 +189,10 @@ Reviewed: 2026-11-03
   alternation, which load affects equally. Make that a tool: a ref against the working tree, per sample and mode, with
   enough rounds to tell noise from change (9 rounds showed +14% on a row that 24 showed as -7%). It reports only, and does
   not replace recorded runs.
+- [x] **The benchmark's `vs average` mixes every version.** (p3) [chore] `benchmarks/run` averages all earlier rows in
+  `benchmarks/history.tsv`, including versions from before the large speedups and runs at load 4. On 2026-11-06 large/complete
+  showed -56% against that average, but only -5% against the previous best (848 ms). Added `Recent` and `vs recent` columns (median of the
+  last 5) beside the average, which stays.
 
 ## Rendering fidelity and larger documents
 

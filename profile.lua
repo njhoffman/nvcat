@@ -45,7 +45,8 @@ local function notify_ready(win)
     if token ~= M.token then
       return
     end
-    -- render-markdown calls on.render three times per Markdown frame, and each redraws (see PERFORMANCE.md).
+    -- render-markdown calls on.render three times per Markdown frame (see PERFORMANCE.md). All three renders
+    -- run before the first of these callbacks, so only the first redraw has work to do.
     M.callbacks = (M.callbacks or 0) + 1
     -- Other queued work (render-markdown's own callbacks, Tree-sitter's async parsing) runs before this.
     local start = lap("queued", scheduled)
@@ -550,15 +551,17 @@ function M.open(path, line, token, spec, syntax)
   assert(line <= last, "Requested line exceeds document length (" .. last .. ")")
   vim.api.nvim_win_set_cursor(0, { line, 0 })
   vim.fn.winrestview({ topline = line, leftcol = 0, skipcol = 0 })
-  M.update("Preview")
+  -- Not forced: :edit already scheduled render-markdown's forced Initial update, which runs after this returns
+  -- and so sees the view set above. A forced update here would run every handler a second time.
+  M.update("Preview", false)
   return vim.api.nvim_get_current_buf()
 end
 
-function M.update(event)
+function M.update(event, force)
   M.update_started = hrtime()
   if M.rendered then
     require("render-markdown.core.ui").update(
-      vim.api.nvim_get_current_buf(), vim.api.nvim_get_current_win(), event, true
+      vim.api.nvim_get_current_buf(), vim.api.nvim_get_current_win(), event, force
     )
   else
     notify_ready(vim.api.nvim_get_current_win())
@@ -568,7 +571,7 @@ end
 function M.resized(token)
   M.token = token
   vim.fn.winrestview({ topline = 1, leftcol = 0, skipcol = 0 })
-  M.update("PreviewResize")
+  M.update("PreviewResize", true)
 end
 
 function M.info()
@@ -592,6 +595,7 @@ function M.info()
     warnings = M.warnings,
     marks = M.marks,
     callbacks = M.callbacks,
+    render_passes = M.rendered and require("render-markdown.core.ui").get(vim.api.nvim_get_current_buf()).n or nil,
   }
 end
 

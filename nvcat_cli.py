@@ -126,7 +126,8 @@ class Timings:
   def table(self):
     report = self.report()
     facts = ", ".join(f"{key} {report[key]}" for key in
-                      ["filetype", "engine", "highlight_index", "grid", "resizes", "ready_callbacks", "redraw_bytes"]
+                      ["filetype", "engine", "highlight_index", "grid", "resizes", "ready_callbacks", "render_passes",
+                       "redraw_bytes"]
                       if key in report)
     lines = [f"nvcat timings (ms){': ' + facts if facts else ''}"]
     for name, value in report["phases"].items():
@@ -502,7 +503,8 @@ class Renderer:
     facts = self.timings.facts
     facts.update(filetype=info["filetype"], engine=info["engine"], highlight_index=info.get("highlight_index"),
                  grid=f"{width}x{height}",
-                 resizes=facts.get("resizes", 0) + resizes, ready_callbacks=info.get("callbacks"))
+                 resizes=facts.get("resizes", 0) + resizes, ready_callbacks=info.get("callbacks"),
+                 render_passes=info.get("render_passes"))
     phases = self.timings.phases
     phases["frames"] = phases.get("frames: first", 0) + phases.get("frames: resizes", 0)
     marks = info.get("marks") or {}

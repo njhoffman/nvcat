@@ -119,7 +119,7 @@ is one.
 
 ```sh
 source <(nvcat completions bash)                                    # in ~/.bashrc
-source <(nvcat completions zsh)                                     # in ~/.zshrc, after compinit; or save as _nvcat on $fpath
+source <(nvcat completions zsh)                                     # in ~/.zshrc, after compinit (before it, nothing is registered); or save as _nvcat on $fpath
 nvcat completions fish > ~/.config/fish/completions/nvcat.fish
 ```
 

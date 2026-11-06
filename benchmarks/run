@@ -5,13 +5,14 @@ Waits until the 1-minute load average is low enough, then renders each sample se
 (complete output, a 40-row viewport, and fzf's preview environment) and records the median wall time, the
 median startup time (until Neovim is set up, from nvcat --timings-json) and the median peak RSS of Neovim
 and of nvcat itself. The SYNTAX.md table compares the new wall-time medians with the average of all
-earlier runs.
+earlier runs, and with the median of the last few: the average spans every version, so it hides a recent change.
 
 The samples and modes run round-robin, one render of each per round, so a burst of load from another
 process spreads over every row instead of ruining one. A run is noisy, and is printed but not recorded
 (exit 3), when the load ends above --max-load or the typical startup is over 1.5 times its recent history:
 startup does not depend on the document, so it shows load rather than a change. --record-noisy records it
-anyway, for a startup that really changed.
+anyway, for a startup that really changed. Exit 2 means the load never dropped low enough to start; exit 1 is
+a failed render.
 """
 
 import argparse
@@ -41,7 +42,7 @@ START, END = "<!-- benchmark:start -->", "<!-- benchmark:end -->"
 
 
 NOISE_RATIO = 1.5  # Startup over this many times its recent median marks the run noisy.
-NOISE_HISTORY = 5  # Recorded runs per sample and mode that form that median.
+RECENT_RUNS = 5  # Recorded runs per sample and mode that form that median and the table's recent one.
 
 
 def render(sample, mode, timeout):
@@ -95,7 +96,7 @@ def noise(rows, previous, load_end, max_load):
   for row in rows:
     earlier = [float(item["startup_ms"]) for item in previous
                if item["sample"] == row["sample"] and item["mode"] == row["mode"]
-               and item.get("startup_ms") not in (None, "", "startup_ms")][-NOISE_HISTORY:]
+               and item.get("startup_ms") not in (None, "", "startup_ms")][-RECENT_RUNS:]
     if earlier and statistics.median(earlier) > 0:
       ratios.append(row["startup_ms"] / statistics.median(earlier))
   if ratios and statistics.median(ratios) > NOISE_RATIO:
@@ -140,11 +141,12 @@ def table(rows, previous):
     f"`FZF_PREVIEW_LINES={LINES}` (the time to the first usable fzf preview). Startup is the time until Neovim "
     "is set up (`--timings`), excluding Python's interpreter start; RSS is the peak of Neovim and of "
     "nvcat's Python. Averages compare wall time with all earlier runs in "
-    "[benchmarks/history.tsv](benchmarks/history.tsv); regenerate with `benchmarks/run`.",
+    f"[benchmarks/history.tsv](benchmarks/history.tsv), Recent with the median of the last {RECENT_RUNS}; "
+    "regenerate with `benchmarks/run`.",
     "",
     "| Sample | Lines | Code blocks | Mode | Latest (ms) | Average (ms) | Runs averaged | vs average | "
-    "Startup (ms) | Neovim RSS (MiB) | Python RSS (MiB) |",
-    "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+    "Recent (ms) | vs recent | Startup (ms) | Neovim RSS (MiB) | Python RSS (MiB) |",
+    "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   ]
   for row in rows:
     lines, blocks = sample_stats(row["sample"])
@@ -154,10 +156,14 @@ def table(rows, previous):
       average = statistics.fmean(earlier)
       change = f"{(row['median_ms'] - average) / average * 100:+.0f}%"
       average_text = f"{average:.0f}"
+      recent = statistics.median(earlier[-RECENT_RUNS:])
+      recent_change = f"{(row['median_ms'] - recent) / recent * 100:+.0f}%"
+      recent_text = f"{recent:.0f}"
     else:
-      change, average_text = "first run", "-"
+      change, average_text, recent_change, recent_text = "first run", "-", "first run", "-"
     out.append(f"| [{row['sample']}](benchmarks/{row['sample']}.md) | {lines} | {blocks} | {row['mode']} | "
-               f"{row['median_ms']:.0f} | {average_text} | {len(earlier)} | {change} | {row['startup_ms']} | "
+               f"{row['median_ms']:.0f} | {average_text} | {len(earlier)} | {change} | {recent_text} | {recent_change} | "
+               f"{row['startup_ms']} | "
                f"{row['nvim_rss_mib']} | {row['python_rss_mib']} |")
   out += ["", END]
   return "\n".join(out)
@@ -187,7 +193,9 @@ def main():
                       help="Record a run even when it looks noisy (for a startup that really changed)")
   args = parser.parse_args()
   if not wait_for_load(args.max_load, args.max_wait, args.interval):
-    raise SystemExit(f"benchmark: load stayed above {args.max_load:.2f} for {args.max_wait:.0f}s; nothing recorded")
+    print(f"benchmark: load stayed above {args.max_load:.2f} for {args.max_wait:.0f}s; nothing recorded",
+          file=sys.stderr)
+    return 2
   base = dict(metadata(), runs=args.runs)
   pairs = [(sample, mode) for sample in SAMPLES for mode in MODES]
   rows = []
