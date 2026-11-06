@@ -6,6 +6,21 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-06
+
+### Added
+
+- The `pager_init` config key names a Lua file whose `apply()` runs in the nvim pager after it sets its keys, for smooth
+  scrolling or keys of your own. If it fails the pager still opens, with a warning. `less` is not affected.
+- `--pace[=RATE]`, the `pace` config key and `NVCAT_PACE` print to a terminal a line at a time at a readable pace, in
+  visible characters per second (default 800), instead of opening the pager. Long lines linger and blank lines pass
+  quickly. Pipes, files and fzf previews are never paced. Ctrl-C stops it.
+
+### Fixed
+
+- `benchmarks/compare` works against a ref older than a key in your config file: that side gets the keys it knows.
+- A long warning in the nvim pager no longer stops at "Press ENTER" before the document is shown.
+
 ## [0.28.0] - 2026-11-06
 
 ### Added

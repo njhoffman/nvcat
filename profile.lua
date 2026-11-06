@@ -652,22 +652,6 @@ function M.pager(session)
   end
   vim.bo.modifiable = false
   vim.bo.modified = false
-  if #M.warnings > 0 then
-    -- One line that fits the screen: a longer message would stop at "Press ENTER" before the document is seen.
-    -- The full text is in nvcat --check.
-    local failed = {}
-    for _, warning in ipairs(M.warnings) do
-      failed[#failed + 1] = warning:match("^(.- query) failed") or warning:match("^(%S+ parser) failed") or warning
-    end
-    local message = ("nvcat: %s failed (details: nvcat --check)"):format(table.concat(failed, ", "))
-    -- Echoed during startup, before the first screen, even one line waits for a key; echo after VimEnter.
-    vim.api.nvim_create_autocmd("VimEnter", { once = true, callback = vim.schedule_wrap(function()
-      if vim.fn.strdisplaywidth(message) >= vim.o.columns then
-        message = vim.fn.strcharpart(message, 0, vim.o.columns - 2) .. "…"
-      end
-      vim.api.nvim_echo({ { message, "WarningMsg" } }, true, {})
-    end) })
-  end
   local map = function(lhs, rhs)
     vim.keymap.set("n", lhs, rhs, { buffer = true, nowait = true, silent = true })
   end
@@ -677,6 +661,40 @@ function M.pager(session)
   map("b", "<C-b>")
   map("d", "<C-d>")
   map("u", "<C-u>")
+  -- After the keys, so that its mappings win. It is the user's code: a failure must not cost them the document.
+  local init_error
+  if session.paths.pager_init then
+    local ok, problem = pcall(function()
+      dofile(session.paths.pager_init).apply()
+    end)
+    -- One line, without the directories, so that the error itself fits the width.
+    init_error = not ok and tostring(problem):gsub("\n.*", ""):gsub("^.-([^/]+:%d+:)", "%1") or nil
+  end
+  if #M.warnings > 0 or init_error then
+    -- One line that fits the screen: a longer message would stop at "Press ENTER" before the document is seen.
+    -- The full text is in nvcat --check.
+    local failed = {}
+    for _, warning in ipairs(M.warnings) do
+      failed[#failed + 1] = warning:match("^(.- query) failed") or warning:match("^(%S+ parser) failed") or warning
+    end
+    local parts = {}
+    if #failed > 0 then
+      parts[1] = ("%s failed (details: nvcat --check)"):format(table.concat(failed, ", "))
+    end
+    if init_error then
+      parts[#parts + 1] = "pager_init: " .. init_error
+    end
+    local message = "nvcat: " .. table.concat(parts, "; ")
+    -- Echoed during startup, before the first screen, even one line waits for a key; echo after VimEnter.
+    vim.api.nvim_create_autocmd("VimEnter", { once = true, callback = vim.schedule_wrap(function()
+      -- 'showcmd' keeps the last 11 columns: a message reaching into them waits for a key too.
+      local room = vim.o.columns - 12
+      if vim.fn.strdisplaywidth(message) > room then
+        message = vim.fn.strcharpart(message, 0, room - 1) .. "…"
+      end
+      vim.api.nvim_echo({ { message, "WarningMsg" } }, true, {})
+    end) })
+  end
   if session.follow then
     M.follow(session.path)
     map("F", "G") -- less: follow again.

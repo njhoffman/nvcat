@@ -169,7 +169,8 @@ The pager is chosen by `--pager`, else the `pager` config key (`NVCAT_PAGER`), e
   motions, and visual yank work, and resizing the terminal re-wraps the text. There is no 1,000-row limit
   and no `--budget`, since Neovim only draws what is on screen. The raw Markdown of the cursor line is
   never revealed. Keys added on top of Neovim's: `q` quits, `space`/`f` and `b` page down/up, `d`/`u`
-  scroll half a page. `--columns` does not apply: the pager uses the terminal's width. In auto mode,
+  scroll half a page. The `pager_init` config key names a Lua file whose `apply()` runs after those keys are set, for
+  smooth scrolling or keys of your own (see [examples/pager-init.lua](examples/pager-init.lua)). `--columns` does not apply: the pager uses the terminal's width. In auto mode,
   nvcat first renders one screen to measure the document, so a short document is printed instead of
   opening the pager. When stdout is not a terminal, `--paging=always` prints.
 
@@ -185,6 +186,21 @@ The pager is chosen by `--pager`, else the `pager` config key (`NVCAT_PAGER`), e
 - **any other value**: a pager command line that reads ANSI text on stdin, run like less.
 
 Ctrl-C is left to the pager.
+
+### Paced output
+
+`--pace` prints to a terminal a line at a time instead of opening the pager, so a document scrolls by at a speed you can
+follow. Each line waits in proportion to the text in it, so long paragraphs linger and blank lines pass quickly:
+
+```sh
+nvcat --pace notes.md       # 800 visible characters per second
+nvcat --pace=300 notes.md   # slower
+nvcat --pace=off notes.md   # overrides the config key
+```
+
+The `pace` config key and `NVCAT_PACE` set it for every run. Ctrl-C stops it. Only a terminal is paced: a pipe, a file
+or an fzf preview gets the output at once. `--pace` cannot be combined with `--paging=always` or `--follow`; when the
+config key is what turned it on, those two page as usual. Rendering happens first, so a slow file still starts late.
 
 ### Color
 

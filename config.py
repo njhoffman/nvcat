@@ -22,10 +22,13 @@ KEYS = {
   "markdown_options": ("path", "Lua file that calls require('render-markdown').setup(opts) or returns opts "
                                "(optional; render-markdown defaults otherwise)"),
   "pager": ("string", "Pager for complete output: nvim (built in), less (less -R), or a command line"),
+  "pager_init": ("path", "Lua file returning a table with apply(), run in the nvim pager after it sets its keys "
+                         "(optional; for smooth scrolling and your own keys)"),
   "hyperlinks": ("string", "OSC 8 hyperlinks for Markdown links: auto, always or never"),
   "color": ("string", "Color in the output: auto, always or never (unset: NO_COLOR, then always)"),
+  "pace": ("string", "Print to a terminal at a readable pace: on, off, or visible characters per second"),
 }
-OPTIONAL = {"icons", "parser_dir", "lua_path", "theme", "colorscheme", "markdown_options"}
+OPTIONAL = {"icons", "parser_dir", "lua_path", "theme", "colorscheme", "markdown_options", "pager_init"}
 
 
 class ConfigError(Exception):
@@ -61,6 +64,24 @@ def defaults():
     "pager": "nvim",
     "hyperlinks": "auto",
   }
+
+
+DEFAULT_PACE = 800.0  # Visible characters per second: about ten full lines of 80 columns.
+
+
+def pace_rate(value):
+  """The characters per second a pace setting means, or None for no pacing. Raises ValueError for a bad one."""
+  if value in (None, "", "off"):
+    return None
+  if value == "on":
+    return DEFAULT_PACE
+  try:
+    rate = float(value)
+  except ValueError:
+    rate = 0
+  if not 0 < rate < float("inf"):
+    raise ValueError(f"pace: {value!r} is not on, off or a positive number of characters per second")
+  return rate
 
 
 def environment_overrides():
@@ -127,6 +148,10 @@ def problems(settings):
     errors.append(f"hyperlinks: {settings['hyperlinks']!r} is not auto, always or never")
   if settings["color"] not in (None, "auto", "always", "never"):
     errors.append(f"color: {settings['color']!r} is not auto, always or never")
+  try:
+    pace_rate(settings["pace"])
+  except ValueError as error:
+    errors.append(str(error))
   for key in sorted(OPTIONAL):
     value = settings[key]
     if isinstance(value, Path) and not value.exists():
@@ -147,6 +172,7 @@ def runtime_paths(settings):
     "parser_dir": existing("parser_dir"),
     "lua_path": existing("lua_path"),
     "theme": existing("theme"),
+    "pager_init": existing("pager_init"),
     "colorscheme": settings["colorscheme"],
     "markdown_options": existing("markdown_options"),
   }

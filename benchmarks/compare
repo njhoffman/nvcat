@@ -6,17 +6,42 @@ trees take turns, swapping which goes first each round, so load from other proce
 round gives one paired difference. A row counts as faster or slower only when the middle 50% of its differences
 is entirely on one side of zero; a median alone can be several percent off on a machine in use.
 
-The samples are the working tree's, for both sides. Exit 1 when a render fails, 2 when REF does not exist.
+The samples are the working tree's, for both sides. So is the config file, without the keys REF does not know, since
+nvcat refuses a config with unknown keys. Exit 1 when a render fails, 2 when REF does not exist.
 """
 
 import argparse
+import importlib.util
+import json
+from pathlib import Path
 import statistics
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 
 from common import MODES, ROOT, SAMPLES, render_command
+
+sys.path.insert(0, str(ROOT))
+import config  # noqa: E402  (nvcat's own, from the working tree)
+
+
+MIN_ROUNDS = 3  # Fewer cannot tell a change from a burst of load.
+
+
+def ref_config(source, exported):
+  """A copy of the config file source for the checkout in exported, with only the keys it knows; None without a file.
+  JSON's strings, numbers, booleans and arrays are also valid TOML for what a config file holds."""
+  if not Path(source).is_file():
+    return None
+  spec = importlib.util.spec_from_file_location("ref_config_module", Path(exported) / "config.py")
+  module = importlib.util.module_from_spec(spec)
+  spec.loader.exec_module(module)
+  settings = tomllib.loads(Path(source).read_text())
+  copy = Path(exported) / "compare-config.toml"
+  copy.write_text("".join(f"{key} = {json.dumps(value)}\n" for key, value in settings.items() if key in module.KEYS))
+  return copy
 
 
 def summarize(rounds):
@@ -26,7 +51,10 @@ def summarize(rounds):
   ref = statistics.median(ref for ref, _ in rounds)
   tree = statistics.median(tree for _, tree in rounds)
   median = statistics.median(differences)
-  verdict = "slower" if low > 0 else "faster" if high < 0 else "noise"
+  if len(rounds) < MIN_ROUNDS:
+    verdict = "too few rounds"
+  else:
+    verdict = "slower" if low > 0 else "faster" if high < 0 else "noise"
   return {"ref_ms": ref, "tree_ms": tree, "change": median / ref * 100, "low": low, "high": high, "verdict": verdict}
 
 
@@ -83,9 +111,12 @@ def main():
     if archive.wait() != 0:
       raise SystemExit(f"compare: git archive {args.ref} failed")
     roots = {"ref": exported, "tree": ROOT}
+    settings = ref_config(config.config_file(), exported)
 
     def render(side, sample, mode):
       command, environment = render_command(roots[side], sample, mode, args.timeout)
+      if side == "ref" and settings:
+        environment["NVCAT_CONFIG"] = str(settings)
       start = time.perf_counter()
       result = subprocess.run(command, capture_output=True, env=environment)
       elapsed = (time.perf_counter() - start) * 1000

@@ -174,3 +174,34 @@ externally_paged() { [ "${lines[0]}" = ==PAGED== ] && [[ $output == *PAGER_BOTTO
   NVCAT_PAGER=less run "$NVCAT" --check
   [[ $output == *'pager            less  [NVCAT_PAGER]'* ]]
 }
+
+@test "pager_init runs after the pager's keys, so its mappings win, and its modules come from lua_path" {
+  mkdir -p "$BATS_TEST_TMPDIR/lua"
+  printf 'return { target = "G" }\n' > "$BATS_TEST_TMPDIR/lua/init_module.lua"
+  cat > "$BATS_TEST_TMPDIR/init.lua" <<'LUA'
+return { apply = function()
+  vim.keymap.set("n", "f", require("init_module").target, { buffer = true, nowait = true })
+end }
+LUA
+  NVCAT_LUA_PATH=$BATS_TEST_TMPDIR/lua NVCAT_PAGER_INIT=$BATS_TEST_TMPDIR/init.lua session init-key "$DOCUMENT" --paging=always
+}
+
+@test "a pager_init that fails still opens the document, with one line saying why" {
+  printf 'return { apply = function() error("BROKEN_INIT\\nsecond line") end }\n' > "$BATS_TEST_TMPDIR/init.lua"
+  NVCAT_PAGER_INIT=$BATS_TEST_TMPDIR/init.lua session init-broken "$DOCUMENT" --paging=always
+  printf 'this is not Lua (\n' > "$BATS_TEST_TMPDIR/init.lua"
+  NVCAT_PAGER_INIT=$BATS_TEST_TMPDIR/init.lua session init-broken-syntax "$DOCUMENT" --paging=always
+}
+
+@test "with the example pager_init the pager's keys still work" {
+  NVCAT_PAGER_INIT=$ROOT/examples/pager-init.lua session keys "$DOCUMENT" --paging=always
+}
+
+@test "pager_init does not run for printed output or for less" {
+  printf 'io.stderr:write("INIT_RAN"); return { apply = function() error("INIT_RAN") end }\n' > "$BATS_TEST_TMPDIR/init.lua"
+  NVCAT_PAGER_INIT=$BATS_TEST_TMPDIR/init.lua run --separate-stderr "$NVCAT" --paging=never --columns 80 "$DOCUMENT"
+  [ "$status" -eq 0 ]
+  [[ $stderr != *INIT_RAN* ]]
+  [[ $output != *INIT_RAN* ]]
+}
+

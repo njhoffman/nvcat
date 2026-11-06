@@ -14,7 +14,7 @@ class Option:
     self.shorts = [flag[1:] for flag in self.flags if not flag.startswith("--")]
     self.longs = [flag[2:] for flag in self.flags if flag.startswith("--")]
     self.dest = action.dest
-    self.takes_value = action.nargs != 0
+    self.takes_value = action.nargs not in (0, "?")  # --pace [RATE]: the next word is still a file.
     self.choices = list(action.choices) if action.choices else None
     self.help = (action.help or "").split(". ")[0].split(";")[0].strip().rstrip(".")
 

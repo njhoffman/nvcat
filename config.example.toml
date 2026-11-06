@@ -43,3 +43,13 @@
 # a pager command other than less may show the output; NVCAT_HYPERLINKS and --hyperlinks override.
 # Default: auto.
 # hyperlinks = "never"
+
+# A Lua file returning a table with apply(), run in the nvim pager (not less) after it sets its keys, so its mappings
+# win. For smooth scrolling and your own keys; modules come from lua_path. If it fails the pager still opens, with a
+# warning. See examples/pager-init.lua.
+# pager_init = "~/.config/nvcat/pager.lua"
+
+# Print to a terminal at a readable pace instead of opening the pager: on (800), off, or visible characters per
+# second. Pipes and fzf previews are never paced, and --paging=always and --follow still page. NVCAT_PACE and
+# --pace override. Default: off.
+# pace = 800

@@ -242,6 +242,32 @@ if scenario == "warning":
   print("ok")
   sys.exit(0)
 
+if scenario == "init-key":
+  # pager_init maps f to G, where the pager's own f pages down: the bottom marker is not one page away.
+  until("PAGER_TOP", 0, "the first screen")
+  quiet()
+  until("PAGER_BOTTOM", press("f"), "pager_init's mapping of f")
+  press("q")
+  finish(lambda status: status == 0)
+  print("ok")
+  sys.exit(0)
+
+if scenario in ("init-broken", "init-broken-syntax"):
+  until("PAGER_TOP", 0, "the first screen")
+  quiet()
+  screen = re.sub(r"\s+", " ", plain(captured))
+  if "pager_init:" not in screen:
+    fail("no pager_init warning on the screen")
+  if scenario == "init-broken" and ("BROKEN_INIT" not in screen or "second line" in screen):
+    fail("the warning is not the error's first line")
+  if "Press ENTER" in screen:
+    fail("the warning needs a key press")
+  until("PAGER_BOTTOM", press("G"), "G after the warning")
+  press("q")
+  finish(lambda status: status == 0)
+  print("ok")
+  sys.exit(0)
+
 if scenario == "regex":
   # --syntax regex: Vim's Markdown syntax keeps the raw heading marker. Wait for a list item, which is drawn
   # after the heading.

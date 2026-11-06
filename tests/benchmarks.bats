@@ -172,7 +172,9 @@ assert faster['verdict'] == 'faster', faster
 noise = m.summarize([(100, 90), (100, 105), (100, 105), (100, 130), (100, 80)])
 assert noise['verdict'] == 'noise' and noise['change'] == 5, noise
 one = m.summarize([(100, 110)])
-assert one['verdict'] == 'slower' and one['low'] == one['high'] == 10, one
+assert one['verdict'] == 'too few rounds' and one['low'] == one['high'] == 10, one
+assert m.summarize([(100, 110)] * 2)['verdict'] == 'too few rounds'
+assert m.summarize([(100, 110)] * 3)['verdict'] == 'slower'
 print('ok')"
   [ "$output" = ok ]
 }
@@ -194,6 +196,24 @@ assert times[('a', 'x')] == [(1.0, 2.0), (1.0, 2.0)], times  # Paired by side, w
 assert same == {('a', 'x'): True, ('b', 'x'): False}, same
 print('ok')"
   [ "$output" = ok ]
+}
+
+@test "benchmarks/compare gives the ref the config keys it knows, and leaves the rest out" {
+  run with_script compare "
+import json, tempfile, tomllib
+from pathlib import Path
+with tempfile.TemporaryDirectory() as temporary:
+  exported = Path(temporary)
+  (exported / 'config.py').write_text('KEYS = dict(theme=1, plugin_dirs=1, pace=1)')
+  source = exported / 'source.toml'
+  values = dict(theme='~/a b' + chr(34) + 'quoted.lua', plugin_dirs=['~/one', '~/two'], pace=800, pager_init='~/new.lua')
+  source.write_text(''.join(key + ' = ' + json.dumps(value) + chr(10) for key, value in values.items()))
+  copy = m.ref_config(source, exported)
+  del values['pager_init']
+  assert tomllib.loads(copy.read_text()) == values, copy.read_text()
+  assert m.ref_config(exported / 'none.toml', exported) is None
+print('ok')"
+  [ "$output" = ok ] || { echo "$output"; return 1; }
 }
 
 @test "benchmarks/compare reports a ref against the working tree and records nothing" {

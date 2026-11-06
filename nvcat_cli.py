@@ -9,6 +9,7 @@ STARTED = time.monotonic_ns()  # Before the other imports, so --timings can repo
 
 import argparse
 import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -881,6 +882,20 @@ def environment_number(parser, name):
   return int(value)
 
 
+def pace_argument(value):
+  try:
+    config.pace_rate(value)
+  except ValueError as error:
+    raise argparse.ArgumentTypeError(str(error)) from None
+  return value
+
+
+def bare_pace(arguments):
+  """arguments with a bare --pace spelled --pace=on, so that argparse does not take the file after it as the rate."""
+  end = arguments.index("--") if "--" in arguments else len(arguments)
+  return ["--pace=on" if argument in ("--pace", "--pac") else argument for argument in arguments[:end]] + arguments[end:]
+
+
 def main():
   timings = Timings()
   timings.since("python imports", STARTED)
@@ -910,6 +925,10 @@ def main():
   parser.add_argument("-f", "--follow", action="store_true",
                       help="Page the file and reload it as it changes, staying at the end while the cursor is on "
                       "the last line (like less +F). Needs the nvim pager, a terminal and a file")
+  parser.add_argument("--pace", nargs="?", const="on", type=pace_argument, metavar="RATE",
+                      help=f"Print to a terminal at a readable pace, line by line, instead of paging: RATE visible "
+                      f"characters per second (default: {config.DEFAULT_PACE:.0f}), or off. Pipes and fzf previews are "
+                      "not paced. Defaults to the configured pace (NVCAT_PACE)")
   parser.add_argument("--pager", help="nvim (built-in Neovim pager), less (less -R), or a pager command line; "
                       "defaults to the configured pager (NVCAT_PAGER), then nvim")
   parser.add_argument("--color", choices=COLORS,
@@ -946,7 +965,7 @@ def main():
   # `completions SHELL` is two arguments, so it cannot be a file; `nvcat completions` alone still opens one of that name.
   if sys.argv[1:2] == ["completions"] and (len(sys.argv) == 3 or not os.path.exists("completions")):
     return print_completions(parser, sys.argv[2:])
-  args = parser.parse_args()
+  args = parser.parse_args(bare_pace(sys.argv[1:]))
   if args.filetypes:
     return list_filetypes()
   if args.file is None and not args.check:
@@ -1072,6 +1091,10 @@ def run(args, timings):
     raise PreviewError(f"Supported dimensions: 10–500 columns, 1–{MAX_ROWS} lines")
   if args.all and args.start_line != 1:
     raise PreviewError("--all cannot be combined with --start-line")
+  args.pace_rate = pace_rate(args, settings["pace"])
+  if args.pace_rate:
+    args.paging = "never"
+    timings.facts["pace"] = args.pace_rate
   if args.paging == "always":
     if args.lines is not None or args.start_line != 1:
       raise PreviewError("--paging=always pages the complete document; remove --lines and --start-line")
@@ -1196,6 +1219,53 @@ def fall_back(error, args, path, width, filetype, viewport, timings, start_line=
   return output
 
 
+def pace_rate(args, configured):
+  """Characters per second to print at, or None. Only a terminal is paced: anything else reads faster than a person,
+  and an fzf preview must appear at once. The pager modes win over the config key, but not over --pace itself."""
+  rate = config.pace_rate(args.pace or configured)
+  if rate and (args.paging == "always" or args.follow):
+    if args.pace:
+      raise PreviewError("--pace prints the document as it goes; it cannot be combined with --paging=always or "
+                         "--follow")
+    return None
+  return rate if sys.stdout.isatty() and not (args.fzf_columns or args.fzf_lines) else None
+
+
+PACE_FLOOR = 0.02  # Seconds per line, so that blank lines still scroll rather than arrive in a block.
+PACE_MAX_LAG = 0.25  # Seconds behind schedule to give up on, as after Ctrl-Z, instead of printing a burst to catch up.
+ESCAPE_SEQUENCE = re.compile(rb"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def line_delay(line, rate):
+  """Seconds a line of output stays the last one printed: its visible characters at rate."""
+  text = ESCAPE_SEQUENCE.sub(b"", line).decode(errors="replace").strip()
+  return max(PACE_FLOOR, len(text) / rate)
+
+
+def write_paced(output, rate, stream, clock=time.monotonic, sleep=time.sleep):
+  """Write output one line at a time at rate. Whole lines only: each closes its own color and hyperlink, so no
+  sequence or wide character is split. The schedule is absolute, so the time writes take does not slow the pace."""
+  due = None
+  delay = 0
+  try:
+    for line in io.BytesIO(output):
+      now = clock()
+      due = now if due is None else due + delay
+      if now - due > PACE_MAX_LAG:
+        due = now
+      elif due > now:
+        sleep(due - now)
+      stream.write(line)
+      stream.flush()
+      delay = line_delay(line, rate)
+  except (KeyboardInterrupt, Cancelled):
+    if b"\x1b" in output:  # Interrupted inside a write: whatever got out may have left a color or link open.
+      with contextlib.suppress(OSError, ValueError):
+        stream.write(b"\x1b]8;;\x1b\\\x1b[0m")
+        stream.flush()
+    raise
+
+
 def emit(output, args, all_rows, pager, timings, temporary, fallback=False):
   if should_page(args.paging, all_rows, output):
     if pager == "nvim":
@@ -1207,6 +1277,9 @@ def emit(output, args, all_rows, pager, timings, temporary, fallback=False):
       return 0
     return page(output, pager, temporary)
   with timings.phase("write output"):
+    if args.pace_rate:
+      write_paced(output, args.pace_rate, sys.stdout.buffer)
+      return 0
     sys.stdout.buffer.write(output)
     sys.stdout.buffer.flush()
   return 0
