@@ -475,6 +475,18 @@ end
 -- Highlight a non-Markdown buffer with Tree-sitter when the language has a highlights query,
 -- otherwise with Neovim's regex syntax file for the filetype.
 -- syntax: "auto" uses Tree-sitter when lang has a highlights query, "regex" always uses Vim's syntax files.
+-- A hand-built `log` parser's query captures @log.* groups, which link to nothing, and an editor links them in an
+-- ftplugin that nvcat does not load. `default` leaves a theme's own groups alone.
+local LOG_LINKS = {
+  date = "Identifier", time = "Function", timezone = "Identifier", duration = "Operator", syslog = "Statement",
+  ["level.error"] = "ErrorMsg", ["level.warning"] = "WarningMsg", ["level.notice"] = "Exception",
+  ["level.info"] = "Repeat", ["level.debug"] = "Debug", ["level.trace"] = "Comment", ["level.success"] = "String",
+  string = "String", number = "Number", float = "Float", boolean = "Boolean", null = "Constant", url = "Underlined",
+  hash = "Label", path = "Conditional", domain = "Label", reference = "Operator", ["xml.header"] = "Function",
+  ["xml.tag"] = "Identifier", ["xml.comment"] = "Comment", ["xml.cdata"] = "String", ["xml.entity"] = "Special",
+  separator = "Comment", operator = "Operator", bracket = "Comment",
+}
+
 local function highlight(filetype, lang, syntax)
   local start = hrtime()
   vim.bo.filetype = filetype
@@ -482,6 +494,11 @@ local function highlight(filetype, lang, syntax)
   local treesitter = syntax ~= "regex" and has_highlights(lang)
   start = lap("open: parser load", start)
   if treesitter then
+    if lang == "log" then
+      for group, link in pairs(LOG_LINKS) do
+        vim.api.nvim_set_hl(0, "@log." .. group, { link = link, default = true })
+      end
+    end
     vim.treesitter.start(0, lang)
     start = lap("open: treesitter start", start)
     if vim.treesitter.query.get(lang, "highlights") == nil then -- Did not compile (warned); memoized otherwise.

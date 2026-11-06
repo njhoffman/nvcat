@@ -198,12 +198,14 @@ Reviewed: 2026-11-03
 
 ## Rendering fidelity and larger documents
 
-- [ ] **Logs are monochrome under a theme without `@log.*` groups.** (p3) [bug] The `log` parser's query uses its own captures
+- [x] **Logs are monochrome under a theme without `@log.*` groups.** (p3) [bug] The `log` parser's query uses its own captures
   (`@log.number`, `@log.level.error`), which Neovim links to nothing. The editor links them in
   `~/.config/nvim/after/ftplugin/log.lua`, which nvcat does not load, so only a theme that sets them (`nord-nick`) gets
   color: `tests/fixtures/log/app.log` has 1 color with no config, and `tests/helpers/theme.lua` has to set them too. Only
   a machine with this hand-built parser is affected; without it `syntax/log.vim` links to standard groups. Fix: the
   same links with `default = true` after the theme in `profile.lua`, or standard captures in the grammar's query.
+  Done in 0.31.1: the links, in `profile.lua`, for `log` only. Standard captures in the query restyled nord-nick, because
+  layered captures merge attributes. Output under nord-nick is byte-identical for both log fixtures; 4 colors with no config.
 - [x] (p3) [test] Compare all reference features at multiple widths, including footnotes, wiki links, HTML comments, and code labels.
   Done in 0.21.0: `tests/reference.bats` at 40, 80 and 120 columns with render-markdown's defaults, plus
   no line wider than the output. It found the cursor row shown as raw Markdown under render-markdown's
@@ -232,9 +234,12 @@ Reviewed: 2026-11-03
   pager` on 2026-11-03 (5 of 5 passed alone). Track only descendants of the test's own nvcat.
   Done differently (0.26.1): a session tag in the environment, because a leaked Neovim is reparented and would stop
   being a descendant, which is the case these checks must catch.
-- [ ] **fzf sometimes does not exit in `tests/fzf.bats`.** (p3) [test] Once on 2026-11-03, fzf had not exited 10 s after
+- [x] **fzf sometimes does not exit in `tests/fzf.bats`.** (p3) [test] Once on 2026-11-03, fzf had not exited 10 s after
   ESC at the end of the session test, at load 3 (`TimeoutExpired` in `fzf_session.py`); every rendering check before
   it passed. It then passed 6 of 6, as did 0.21.0. Cause unknown: find out whether a preview ignores cancellation.
+  Likely the test, not nvcat (0.31.1): it stopped reading the terminal after ESC, and fzf blocks on a full terminal. Two
+  unread repaints hung fzf for 10 s every time, and with a reader it exited in under 0.2 s. The test now keeps reading.
+  That the 2026-11-03 failure was this is inferred: it was not caught in the act.
 - [x] **Run `tests/nvim-versions` for 0.19.0-0.21.x.** (p2) [test] `docs/RELEASING.md` requires it for each release;
   it did not run for these, and its `DEFAULT_TESTS` lacked `attributes` and `reference`.
   Done in 0.21.2: both added; v0.11.7 190 of 190 and v0.12.6 191 of 191 ok, 1 skipped each.

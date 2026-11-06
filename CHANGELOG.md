@@ -6,6 +6,13 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-11-06
+
+### Fixed
+
+- Logs have color under any theme when a `log` parser captures `@log.*` groups; a theme's own groups still win.
+- `tests/fzf.bats` keeps reading the terminal after ESC, since fzf cannot exit while its output sits unread.
+
 ## [0.31.0] - 2026-11-06
 
 ### Added

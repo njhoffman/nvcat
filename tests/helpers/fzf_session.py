@@ -127,7 +127,13 @@ try:
   time.sleep(1)
   until(markers[1][0], press(b""), "rapid selection changes settle on the second file")
   os.write(master, b"\x1b")
-  fzf.wait(timeout=10)
+  # Keep reading: fzf blocks on a full terminal, so it cannot exit while repaints sit unread.
+  deadline = time.monotonic() + 10
+  while fzf.poll() is None:
+    if time.monotonic() > deadline:
+      raise SystemExit("fzf did not exit after ESC")
+    if not read(0.1):
+      time.sleep(0.1)
   deadline = time.monotonic() + 5
   while (leftover := embedded_nvims() - baseline) and time.monotonic() < deadline:
     time.sleep(0.1)

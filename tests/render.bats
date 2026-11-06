@@ -56,6 +56,22 @@ for e in filetypes.load(): print(e["filetype"], e.get("lang", e["filetype"]))' "
   fi
 }
 
+@test "the log parser's own captures have colors, and a theme's groups win" {
+  python3 "$BATS_TEST_DIRNAME/helpers/has_parser.py" log || skip "no log parser here"
+  run "$NVCAT" --columns 80 --all --filetype log -- "$FIXTURES/log/app.log" < /dev/null
+  [ "$status" -eq 0 ]
+  [ "$(colors "$output")" -ge 3 ]
+  theme=$BATS_TEST_TMPDIR/theme.lua
+  cat > "$theme" <<'THEME'
+return { apply = function()
+  vim.api.nvim_set_hl(0, "@log.date", { fg = "#010203" })
+end }
+THEME
+  NVCAT_THEME=$theme run "$NVCAT" --columns 80 --all --filetype log -- "$FIXTURES/log/app.log" < /dev/null
+  [ "$status" -eq 0 ]
+  [[ $output == *"38;2;1;2;3"* ]]
+}
+
 @test "regex-syntax filetypes highlight comments" {
   run "$NVCAT" --columns 80 --all --filetype tmux -- "$FIXTURES/tmux/.tmux.conf"
   [ "$status" -eq 0 ]
