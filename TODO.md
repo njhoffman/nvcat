@@ -185,7 +185,8 @@ Reviewed: 2026-11-03
   `benchmarks/run` then records warm-worker results as their own mode, apart from fresh starts.
   0.33.0: `NVCAT_WORKER=1`, `tests/worker.bats`, and `benchmarks/worker` for its measurements. Warm-worker results in
   `benchmarks/run` remain open below.
-- [ ] **`benchmarks/run` has no warm-worker mode.** (p3) [perf] `benchmarks/worker` reports only; record worker latency in the history.
+- [x] **`benchmarks/run` has no warm-worker mode.** (p3) [perf] `benchmarks/worker` reports only; record worker latency in the history.
+  Done in 0.34.2: the modes `worker` and `worker-all`.
 - [x] **The worker does not cover `--all` or `nvcat-dispatch`.** (p3) [perf] The router calls `--all --paging=never --budget=2 --filetype`,
   so previews through it render fresh. Needs complete output in the worker, with its budget and output checked against fresh.
   Done in 0.34.0; `benchmarks/worker --part output-router` and `--part router`.

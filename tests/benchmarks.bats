@@ -102,6 +102,28 @@ print('ok')"
   [ "$(sha1sum <"$ROOT/docs/PERFORMANCE.md")" = "$before" ]
 }
 
+@test "benchmarks/run records worker modes, from a worker that served them all" {
+  history=$(md5sum "$ROOT/benchmarks/history.tsv")
+  run --separate-stderr "$ROOT/benchmarks/run" --dry-run --runs 1 --max-load 1000
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [ "$(grep -c '| worker |' <<<"$output")" -eq 4 ]
+  [ "$(grep -c '| worker-all |' <<<"$output")" -eq 4 ]
+  [ "$history" = "$(md5sum "$ROOT/benchmarks/history.tsv")" ]
+  run with_script run "
+try:
+  m.all_served({'previews': 3}, 4)
+except SystemExit as error:
+  print('refused', error)"
+  [[ $output == refused*'served 3 of 4'* ]]
+}
+
+@test "the benchmarks' fresh renders ignore NVCAT_WORKER in the environment" {
+  NVCAT_WORKER=1 run with_script run "
+from common import render_command
+print(render_command(m.ROOT, 'small', 'fzf', 5)[1].get('NVCAT_WORKER'))"
+  [ "$output" = None ]
+}
+
 @test "benchmarks/run warms every sample and mode once, then renders them round-robin" {
   run with_script run "
 calls = []

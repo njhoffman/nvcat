@@ -6,6 +6,16 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.34.2] - 2026-11-06
+
+### Added
+
+- `benchmarks/run` records worker previews as the modes `worker` and `worker-all`.
+
+### Fixed
+
+- The benchmarks' fresh renders no longer come from a worker when `NVCAT_WORKER=1` is set in the environment.
+
 ## [0.34.1] - 2026-11-06
 
 ### Fixed

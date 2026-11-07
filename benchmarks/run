@@ -23,7 +23,8 @@ import subprocess
 import sys
 import time
 
-from common import COLUMNS, HERE, LINES, MODES, ROOT, SAMPLES, load1, metadata, render_command, wait_for_load
+from common import (COLUMNS, HERE, LINES, MODES, ROOT, SAMPLES, WORKER_MODES, Worker, load1, metadata, render_command,
+                    wait_for_load)
 HISTORY = HERE / "history.tsv"
 SYNTAX = ROOT / "SYNTAX.md"
 # Phases up to a ready Neovim (nvcat --timings-json). Python's own interpreter start precedes them.
@@ -52,6 +53,22 @@ def render(sample, mode, timeout):
     raise SystemExit(f"benchmark: {sample}/{mode} failed: {stderr}")
   return (elapsed, sum(report["phases"].get(name, 0) for name in STARTUP_PHASES),
           report["peak_rss_kb"]["children"] / 1024, report["peak_rss_kb"]["python"] / 1024)
+
+
+def worker_render(worker, sample, mode):
+  """One preview from the worker, in render's terms. A served preview starts nothing, and its client is not measured."""
+  start = time.perf_counter()
+  result = worker.preview(HERE / f"{sample}.md", flags=WORKER_MODES[mode])
+  elapsed = (time.perf_counter() - start) * 1000
+  if result.returncode != 0 or not result.stdout or result.stderr:
+    raise SystemExit(f"benchmark: {sample}/{mode} failed: {result.stderr.decode(errors='replace').strip()}")
+  return elapsed, 0.0, worker.rss_mib(), 0.0
+
+
+def all_served(stats, expected):
+  """A preview that nvcat rendered by itself would be timed as a worker's."""
+  if stats["previews"] != expected:
+    raise SystemExit(f"benchmark: the worker served {stats['previews']} of {expected} previews: {stats}")
 
 
 def measure(pairs, runs, timeout, render=render):
@@ -124,7 +141,9 @@ def table(rows, previous):
     f"Latest run: {first['date']}, version {first['version']} ({first['commit']}), load {first['load1']}, "
     f"{first['nvim']}. Median of {first['runs']} runs after one warm-up, {COLUMNS} columns; complete output "
     f"uses `--all --budget 0`, viewport `--lines {LINES}`, fzf sets `FZF_PREVIEW_COLUMNS={COLUMNS}` and "
-    f"`FZF_PREVIEW_LINES={LINES}` (the time to the first usable fzf preview). Startup is the time until Neovim "
+    f"`FZF_PREVIEW_LINES={LINES}` (the time to the first usable fzf preview). `worker` and `worker-all` are previews from "
+    "`NVCAT_WORKER=1`, viewport and with `nvcat-dispatch`'s flags, each following a different document; their Startup and "
+    "Python RSS are 0 and Neovim RSS is its current size. Startup is the time until Neovim "
     "is set up (`--timings`), excluding Python's interpreter start; RSS is the peak of Neovim and of "
     "nvcat's Python. Averages compare wall time with all earlier runs in "
     f"[benchmarks/history.tsv](benchmarks/history.tsv), Recent with the median of the last {RECENT_RUNS}; "
@@ -183,9 +202,14 @@ def main():
           file=sys.stderr)
     return 2
   base = dict(metadata(), runs=args.runs)
-  pairs = [(sample, mode) for sample in SAMPLES for mode in MODES]
+  pairs = [(sample, mode) for sample in SAMPLES for mode in [*MODES, *WORKER_MODES]]
   rows = []
-  for (sample, mode), result in measure(pairs, args.runs, args.timeout).items():
+  with Worker() as worker:
+    def either(sample, mode, timeout):
+      return worker_render(worker, sample, mode) if mode in WORKER_MODES else render(sample, mode, timeout)
+    results = measure(pairs, args.runs, args.timeout, render=either)
+    all_served(worker.stats(), (args.runs + 1) * len(SAMPLES) * len(WORKER_MODES))
+  for (sample, mode), result in results.items():
     rows.append(dict(base, sample=sample, mode=mode, **result))
     print(f"{sample:7} {mode:9} {result['median_ms']:7d} ms  startup {result['startup_ms']:4d} ms  "
           f"nvim {result['nvim_rss_mib']:4d} MiB", file=sys.stderr, flush=True)
