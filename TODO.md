@@ -194,8 +194,6 @@ Reviewed: 2026-11-03
   (888 lines) lost one paragraph's inline rendering in most runs, a different one each time. `complete_height` avoids that
   jump, and 12 runs of a document wrapping from about 225 to 662 rows were clean, but the cause is not known, so a document
   that wraps far past its line count may still hit it.
-- [ ] (p3) [perf] Add caching only if measurements justify it; include viewport, file content, theme, configuration, and parser versions.
-  `benchmarks/run` then records cache hits as their own mode, apart from renders.
 - [x] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
   like a failed render, while `benchmarks/highlighter` exits 2 for the same case. Exit 2 here too. On
   2026-11-03 other processes held the load at 8-23 for the whole 15 minutes.
