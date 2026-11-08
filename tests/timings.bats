@@ -52,7 +52,8 @@ field() {
   run --separate-stderr "$NVCAT" --paging=never --columns 80 --all --filetype lua --timings-json "$file"
   [ "$status" -eq 0 ]
   [ "$(field 'r["engine"]')" = treesitter ]
-  [ "$(field 'r["phases"].get("open: treesitter start", 0) > r["phases"].get("open: injected languages", 0)')" = True ]
+  # Starting the highlighter takes about 10 us, which the two-decimal phases can round to 0.0: check presence.
+  [ "$(field '"open: treesitter start" in r["phases"] and r["phases"].get("open: injected languages", 0) == 0')" = True ]
 }
 
 @test "--all records resize rounds when the first grid is too short" {
