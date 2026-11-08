@@ -487,7 +487,7 @@
     "cmod", "cmusrc", "cobol", "coco", "codeowners", "colortest", "comment", "commonlisp", "conaryrecipe",
     "conf", "config", "confini", "context", "cooklang", "corn", "cpon", "cpp", "crm", "crontab", "cs", "csc",
     "csdl", "csh", "csp", "css", "csv", "cterm", "ctrlh", "cucumber", "cuda", "cue", "cupl", "cuplsim", "cvs",
-    "cvsrc", "cweb", "cxx", "cylc", "cynlib", "cynpp", "d", "dart", "datascript", "dax", "dcd", "dcl",
+    "cvsrc", "cweb", "cxx", "cynlib", "cynpp", "d", "dart", "datascript", "dax", "dcd", "dcl",
     "deb822sources", "debchangelog", "debcontrol", "debcopyright", "debsources", "def", "denyhosts",
     "dep3patch", "desc", "desktop", "devicetree", "dhall", "dictconf", "dictdconf", "diff", "dircolors",
     "directory", "dirpager", "disassembly", "diva", "django", "djot", "dns", "dnsmasq", "docbk", "docbksgml",
