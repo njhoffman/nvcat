@@ -388,10 +388,11 @@ function M.setup(channel, paths)
   local start = hrtime()
   M.marks.setup = start
   M.channel = channel
-  -- A screen grab waits for the finished frame, so parse in one go. Asynchronous parsing races render-markdown's
-  -- synchronous parse when the grid grows: injected trees go missing while the parser reports them valid, and
-  -- paragraphs lose their inline highlights. The pager keeps asynchronous parsing, which keeps it responsive.
-  if channel then
+  -- Parse in one go. Asynchronous parsing races render-markdown's synchronous parse when the grid grows or the view
+  -- jumps: injected trees go missing while the parser reports them valid, and paragraphs lose their inline
+  -- highlights. A screen grab waits for the finished frame anyway, and the pager's moves redraw no slower. Only
+  -- --follow keeps asynchronous parsing (M.following), since each reload of a growing file parses it again.
+  if channel or not M.following then
     vim.g._ts_force_sync_parsing = true
   end
   vim.opt.runtimepath:append(paths.render_markdown)
@@ -725,6 +726,7 @@ end
 
 function M.pager(session)
   vim.o.shortmess = vim.o.shortmess .. "IF"
+  M.following = session.follow -- Read by M.setup: --follow keeps asynchronous parsing.
   M.setup(nil, session.paths)
   load(session.path, session.filetype, session.syntax)
   if M.rendered then

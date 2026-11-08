@@ -6,6 +6,13 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.34.4] - 2026-11-07
+
+### Fixed
+
+- The built-in pager no longer shows a paragraph's raw Markdown (`**bold**`, backticks, link syntax) for a moment
+  after a jump or a large scroll: it parses synchronously, like rendering. `--follow` keeps asynchronous parsing.
+
 ## [0.34.3] - 2026-11-07
 
 ### Fixed

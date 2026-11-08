@@ -11,6 +11,7 @@ first line), PAGER_MIDDLE, and PAGER_BOTTOM (on the last line). Scenarios:
   hup     SIGHUP to nvcat while the pager is open exits non-zero
   follow  --follow: appended lines appear, scrolling up pauses, G resumes, truncation reloads
   warning a broken lua highlights query is reported on screen, the file is colored, q exits 0
+  shows   the screen shows the text in $PAGER_EXPECT (from a pager_init, say); q exits 0
 Every scenario also checks that no Neovim started by this checkout outlives nvcat.
 Prints "ok" on success; otherwise the reason and the tail of the screen output, and exits 1.
 """
@@ -153,6 +154,14 @@ if scenario == "unsafe-links":
     fail("a link with a scheme outside link_schemes became a hyperlink")
   if b"PWNED" in captured or b"\x1b]0;" in captured:
     fail("a URL's control bytes reached the terminal")
+  press("q")
+  finish(lambda status: status == 0)
+  print("ok")
+  sys.exit(0)
+
+if scenario == "shows":
+  # Any start, --follow's included: the text may appear wherever the pager opens.
+  until(os.environ["PAGER_EXPECT"], 0, repr(os.environ["PAGER_EXPECT"]))
   press("q")
   finish(lambda status: status == 0)
   print("ok")

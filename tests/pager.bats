@@ -64,6 +64,19 @@ session() {
   session follow "$DOCUMENT" --follow
 }
 
+@test "the pager parses synchronously, except with --follow" {
+  # Asynchronous parsing loses paragraphs' inline trees after a jump (see M.setup in profile.lua). The pager may
+  # write only its own temporary directory, so pager_init shows the setting on screen.
+  cat > "$BATS_TEST_TMPDIR/init.lua" <<'LUA'
+return { apply = function()
+  local value = tostring(vim.g._ts_force_sync_parsing)
+  vim.defer_fn(function() vim.api.nvim_echo({ { "SYNC_PARSING=" .. value } }, false, {}) end, 200)
+end }
+LUA
+  PAGER_EXPECT=SYNC_PARSING=true NVCAT_PAGER_INIT=$BATS_TEST_TMPDIR/init.lua session shows "$DOCUMENT" --paging=always
+  PAGER_EXPECT=SYNC_PARSING=nil NVCAT_PAGER_INIT=$BATS_TEST_TMPDIR/init.lua session shows "$DOCUMENT" --follow
+}
+
 @test "--follow keeps a non-Markdown file's highlighting when it reloads" {
   json=$BATS_TEST_TMPDIR/follow.json
   printf '["KEEP_COLOR", 1]\n' > "$json"

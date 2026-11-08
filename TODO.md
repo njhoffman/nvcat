@@ -196,9 +196,13 @@ Reviewed: 2026-11-03
   paragraphs without their injected inline tree while the parser reports them valid. Only a grid shorter than the line
   count reaches it, which `complete_height` already prevents. Done in 0.34.3: a screen grab parses synchronously;
   `tests/highlight_wait.bats` starts from 40 rows.
-- [ ] **The pager may lose inline highlights the same way.** (p3) [bug] The built-in pager keeps asynchronous parsing so
-  that it stays responsive, and render-markdown parses synchronously on scroll and resize. Not seen there yet; reproduce
-  before changing it. A minimal Neovim report (no nvcat, no render-markdown) would also help upstream.
+- [x] **The pager may lose inline highlights the same way.** (p3) [bug] It did: after a jump or a scroll that brings many
+  paragraphs into view, about one move in a hundred drew a paragraph's raw `**bold**` for a second or more (12 runs of
+  60 random moves on `large.md`, with asynchronous parsing). Done in 0.34.4: the pager parses synchronously too, which
+  redraws its moves no slower; `--follow` keeps asynchronous parsing for its reloads.
+- [ ] **Report the injected-tree race to Neovim.** (p3) [chore] An asynchronous parse racing a synchronous one leaves
+  regions without a tree while `is_valid()` reports them parsed; only `invalidate()` repairs it. Needs a minimal
+  reproduction without nvcat and render-markdown. Once fixed upstream, nvcat can drop `_ts_force_sync_parsing`.
 - [x] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
   like a failed render, while `benchmarks/highlighter` exits 2 for the same case. Exit 2 here too. On
   2026-11-03 other processes held the load at 8-23 for the whole 15 minutes.
