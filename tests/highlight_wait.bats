@@ -52,3 +52,24 @@ LUA
   NVCAT_CONFIG=$(config_for busy) "$NVCAT" --fallback=none --all --budget=20 "$document" >"$BATS_TEST_TMPDIR/complete.busy"
   NVCAT_CONFIG=$(config_for still) "$NVCAT" --fallback=none --all --budget=20 "$document" | cmp - "$BATS_TEST_TMPDIR/complete.busy"
 }
+
+@test "complete output from a grid shorter than the document keeps every paragraph's inline highlights" {
+  # nvcat starts complete output near its final height; from 40 rows, the grid grows to the whole document,
+  # and asynchronous parsing lost the injected inline trees of some paragraphs, in about half the runs.
+  document=$ROOT/benchmarks/large.md
+  "$NVCAT" --fallback=none --all --columns=100 "$document" >"$BATS_TEST_TMPDIR/expected"
+  cat >"$BATS_TEST_TMPDIR/short.py" <<PY
+import sys
+sys.argv[0] = "nvcat"
+sys.path.insert(0, "$ROOT")
+import nvcat_cli
+nvcat_cli.complete_height = lambda path, height: height
+nvcat_cli.command()
+PY
+  for run in 1 2 3 4 5 6; do
+    python3 "$BATS_TEST_TMPDIR/short.py" --fallback=none --all --columns=100 --timings "$document" \
+      >"$BATS_TEST_TMPDIR/short" 2>"$BATS_TEST_TMPDIR/timings"
+    grep -q 'grid 100x[0-9]*, resizes [1-9]' "$BATS_TEST_TMPDIR/timings"
+    cmp "$BATS_TEST_TMPDIR/short" "$BATS_TEST_TMPDIR/expected"
+  done
+}

@@ -388,6 +388,12 @@ function M.setup(channel, paths)
   local start = hrtime()
   M.marks.setup = start
   M.channel = channel
+  -- A screen grab waits for the finished frame, so parse in one go. Asynchronous parsing races render-markdown's
+  -- synchronous parse when the grid grows: injected trees go missing while the parser reports them valid, and
+  -- paragraphs lose their inline highlights. The pager keeps asynchronous parsing, which keeps it responsive.
+  if channel then
+    vim.g._ts_force_sync_parsing = true
+  end
   vim.opt.runtimepath:append(paths.render_markdown)
   if paths.icons then
     vim.opt.runtimepath:append(paths.icons)

@@ -6,6 +6,17 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.34.3] - 2026-11-07
+
+### Fixed
+
+- Complete output whose grid grows past its first height no longer loses some paragraphs' inline formatting (bold,
+  italic, hidden link syntax). Rendering now parses synchronously; the built-in pager is unchanged.
+
+### Changed
+
+- `cylc` files are no longer listed as a Tree-sitter filetype: nvim-treesitter dropped its parser and queries.
+
 ## [0.34.2] - 2026-11-06
 
 ### Added

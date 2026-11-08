@@ -190,10 +190,15 @@ Reviewed: 2026-11-03
 - [x] **The worker does not cover `--all` or `nvcat-dispatch`.** (p3) [perf] The router calls `--all --paging=never --budget=2 --filetype`,
   so previews through it render fresh. Needs complete output in the worker, with its budget and output checked against fresh.
   Done in 0.34.0; `benchmarks/worker --part output-router` and `--part router`.
-- [ ] **Growing a short grid can leave a paragraph unrendered.** (p3) [bug] Complete output from a 40-row grid of `large.md`
-  (888 lines) lost one paragraph's inline rendering in most runs, a different one each time. `complete_height` avoids that
-  jump, and 12 runs of a document wrapping from about 225 to 662 rows were clean, but the cause is not known, so a document
-  that wraps far past its line count may still hit it.
+- [x] **Growing a short grid can leave a paragraph unrendered.** (p3) [bug] Complete output from a 40-row grid of `large.md`
+  (888 lines) lost the inline highlights of 5 to 31 paragraphs in about half the runs, on 0.11.7, 0.12.6 and 0.13-dev.
+  The cause is a race in Neovim: the highlighter's asynchronous parse and render-markdown's synchronous one leave
+  paragraphs without their injected inline tree while the parser reports them valid. Only a grid shorter than the line
+  count reaches it, which `complete_height` already prevents. Done in 0.34.3: a screen grab parses synchronously;
+  `tests/highlight_wait.bats` starts from 40 rows.
+- [ ] **The pager may lose inline highlights the same way.** (p3) [bug] The built-in pager keeps asynchronous parsing so
+  that it stays responsive, and render-markdown parses synchronously on scroll and resize. Not seen there yet; reproduce
+  before changing it. A minimal Neovim report (no nvcat, no render-markdown) would also help upstream.
 - [x] **`benchmarks/run` cannot tell a load timeout from a failure.** (p3) [chore] Waiting out `--max-wait` exits 1,
   like a failed render, while `benchmarks/highlighter` exits 2 for the same case. Exit 2 here too. On
   2026-11-03 other processes held the load at 8-23 for the whole 15 minutes.
