@@ -136,8 +136,16 @@ compares the output with the index on and off. One behavior differs: the stock l
 line toward the skip-ahead position it returns, so that position is behind the line and Neovim calls again for
 the next line. Narrowed, it is the next capture or tree start, so Neovim makes fewer calls.
 
-The upstream fix is the same index inside Neovim ([neovim#42675](https://github.com/neovim/neovim/issues/42675)).
-Until then the patch depends on private internals: it checks each one, stays off when one is missing, and
+Reported upstream as [neovim#42675](https://github.com/neovim/neovim/issues/42675). The fix,
+[neovim#42735](https://github.com/neovim/neovim/pull/42735) (merged 2026-11-07), keeps the loop over every tree
+but stores each root range in its state, so the check per tree allocates nothing, and trees above the line no
+longer hold back the skip-ahead position. Applied onto c5641b2 (medians of 5, load 4.1-4.5), on_range time drops
+from 2407 to 180 ms on the 600-row table and from 969 to 94 ms on `large.md`. The index still halves on_range on
+the table (180 to 95 ms, a render of 853 against 727 ms), and on the other samples it was 9-15% slower overall.
+So on a Neovim whose `prepare_highlight_states` sets `root_range`, the patch stays off and reports `not needed`;
+`NVCAT_HIGHLIGHT_INDEX=1` forces it, which `benchmarks/highlighter` uses for its indexed mode.
+
+Before the fix the patch depends on private internals: it checks each one, stays off when one is missing, and
 reports the reason as `highlight_index` in `--timings`. Rerun `benchmarks/highlighter` after a Neovim upgrade.
 
 <!-- highlighter:start -->

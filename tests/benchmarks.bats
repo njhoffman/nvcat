@@ -91,7 +91,7 @@ print('ok')"
 }
 
 @test "the highlighter benchmark compares one document in both modes and records nothing" {
-  "$ROOT/nvcat" --paging=never --columns 80 --lines 1 --timings-json "$ROOT/benchmarks/small.md" 2>&1 >/dev/null |
+  NVCAT_HIGHLIGHT_INDEX=1 "$ROOT/nvcat" --paging=never --columns 80 --lines 1 --timings-json "$ROOT/benchmarks/small.md" 2>&1 >/dev/null |
     python3 -c 'import json, sys; sys.exit(json.load(sys.stdin)["highlight_index"] != "on")' ||
     skip "this Neovim has no highlighter index to compare"
   before=$(sha1sum <"$ROOT/docs/PERFORMANCE.md")

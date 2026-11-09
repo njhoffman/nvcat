@@ -6,6 +6,18 @@ annotated `vMAJOR.MINOR.PATCH` Git tags.
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-11-09
+
+### Changed
+
+- On Neovim builds with neovim#42735 (merged 2026-11-07), nvcat no longer patches the Tree-sitter highlighter:
+  Neovim's own fix makes most of the gain, and `highlight_index` in `--timings` reports `not needed`. Older
+  builds keep the patch.
+
+### Added
+
+- `NVCAT_HIGHLIGHT_INDEX=1` turns the highlighter patch on even where Neovim does not need it.
+
 ## [0.34.4] - 2026-11-07
 
 ### Fixed

@@ -198,8 +198,12 @@ end
 -- next one. Narrowed, the position is the next capture or tree start, and Neovim makes fewer calls.
 --
 -- These are private internals, so the patch checks each one it relies on and leaves the highlighter alone
--- when one is missing. NVCAT_HIGHLIGHT_INDEX=0 turns it off. Returns "on", "off", or "unavailable: <reason>",
--- shown as highlight_index in --timings.
+-- when one is missing. Neovim with neovim#42735 stores each tree's root range in its state and skips trees
+-- above the line, which leaves the index little to gain, so it stays off there ("not needed"). Its
+-- prepare_highlight_states then sets a root_range field, the marker checked for. NVCAT_HIGHLIGHT_INDEX=0
+-- turns it off, and =1 turns it on even where it is not needed (benchmarks/highlighter compares the two).
+-- Returns "on", "off", "not needed: <reason>" or "unavailable: <reason>", shown as highlight_index in
+-- --timings.
 local SPAN_LIMIT = 64 -- Ranges spanning more rows than this keep the full list.
 
 local function upvalue(fn, wanted)
@@ -269,6 +273,9 @@ function M.index_highlighter()
     if type(H[name]) ~= "function" then
       return "unavailable: TSHighlighter." .. name .. " is missing"
     end
+  end
+  if vim.env.NVCAT_HIGHLIGHT_INDEX ~= "1" and not uses(H.prepare_highlight_states, { "root_range" }) then
+    return "not needed: Neovim's highlighter has the neovim#42735 fix"
   end
   local slot, impl = upvalue(H._on_range, "on_range_impl")
   if type(impl) ~= "function" then

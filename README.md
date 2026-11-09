@@ -289,9 +289,11 @@ an escape hatch for a slow or broken parser (Tree-sitter's query compilation dom
 On Neovim 0.12 and later, nvcat narrows the highlight states Neovim's Tree-sitter highlighter visits for each
 drawn line to the trees on that line. The output is unchanged; Markdown with many inline spans and code blocks
 renders up to 3.7 times faster (a 600-row table: 2.3 s to 0.63 s) (see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#tree-sitter-highlighter-index)). It
-patches private Neovim internals, checks each one first and stays off when one has changed;
-`highlight_index` in `--timings` shows `on`, `off` or why it is unavailable. `NVCAT_HIGHLIGHT_INDEX=0`
-turns it off.
+patches private Neovim internals, checks each one first and stays off when one has changed. Neovim builds
+with [neovim#42735](https://github.com/neovim/neovim/pull/42735) (merged 2026-11-07) make most of that gain
+themselves, so there it stays off. `highlight_index` in `--timings` shows `on`, `off`, `not needed` or why it is
+unavailable. `NVCAT_HIGHLIGHT_INDEX=0` turns it off, and `NVCAT_HIGHLIGHT_INDEX=1` turns it on where it is not
+needed.
 
 ### Worker for fzf previews
 

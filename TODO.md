@@ -22,8 +22,12 @@ Reviewed: 2026-11-03
 - [x] **File the Neovim issue.** (p2) [chore] Filed 2026-11-03 as
   https://github.com/neovim/neovim/issues/42675 (the redraw path; the `conceal_lines` half is already #39699).
   Text and scripts in `docs/upstream/neovim-treesitter-injection-cost.md`.
-- [ ] **Drop `index_highlighter` once Neovim fixes #42675.** (p3) [chore] Keep it off for the fixed versions
-  (`tests/highlighter.bats` expects `on` for 0.12+) and drop the workaround notes.
+- [x] **Drop `index_highlighter` once Neovim fixes #42675.** (p3) [chore] Keep it off for the fixed versions
+  (`tests/highlighter.bats` expects `on` for 0.12+) and drop the workaround notes. Fixed by neovim#42735;
+  0.35.0 detects it (`root_range` in `prepare_highlight_states`) and reports `not needed`.
+- [ ] **Remove `index_highlighter` once no supported Neovim lacks neovim#42735.** (p3) [chore] Builds before the
+  fix (0.12 releases, dev builds before 2026-11-07) still use it. When the minimum Neovim has the fix, delete
+  it, `tests/highlighter.bats` and `benchmarks/highlighter`, and the README and PERFORMANCE notes.
 - [x] **Non-numeric fzf size variables give a raw ValueError.** (p3) [bug] `int(os.environ["FZF_PREVIEW_COLUMNS"])`
   in `nvcat` main() prints `invalid literal for int()`; report which variable was bad instead.
 - [x] **less shows Nerd Font icons as `<U+F0CA3>`.** (p1) [bug] less treats Private Use Area code points as
